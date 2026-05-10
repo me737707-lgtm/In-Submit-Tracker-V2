@@ -130,7 +130,8 @@ const CONFIG = {
     
     // Demo login users for testing
     DEMO_USERS: [
-        { username: "Fayez", password: "2468", role: "supervisors", permission: "all" },
-        { username: "Asmaa Khaled", password: "123456", role: "Qc", permission: "only" }
-    ]
+    { username: "Fayez", password: "2468", role: "supervisors", permission: "all" },
+    { username: "Asmaa Khaled", password: "123456", role: "Qc", permission: "only" },
+    { username: "Wafaa Fathy", password: "123456", role: "Qc", permission: "only" }  // ✅ أضف هذا
+]
 };
