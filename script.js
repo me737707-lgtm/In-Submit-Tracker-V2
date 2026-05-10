@@ -1,8 +1,8 @@
 /**
  * ============================================
- * SCRIPT.JS — Application Engine
+ * SCRIPT.JS — Application Engine (Full Version)
  * ============================================
- * Depends on: config.js (must be loaded first via defer)
+ * Includes: Login System, Permissions, & Full UI Logic
  */
 
 /* ---- Application State ---- */
@@ -18,8 +18,79 @@ const state = {
     customApiUrl: null
 };
 
+// Global user state
+let currentUser = null;
+
 /* ---- Cached DOM Elements ---- */
 const elements = {};
+
+/* ============================================
+    AUTHENTICATION SYSTEM
+   ============================================ */
+
+/**
+ * Handles the login process and transitions to the dashboard
+ */
+async function handleLogin() {
+    const userField = document.getElementById('username');
+    const passField = document.getElementById('password');
+    const btn = document.getElementById('loginBtn');
+    const errorDiv = document.getElementById('loginError');
+    
+    const user = userField.value.trim();
+    const pass = passField.value;
+
+    if(!user || !pass) {
+        alert("Please enter both username and password.");
+        return;
+    }
+
+    // UI Feedback
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Authenticating...';
+    errorDiv.style.display = 'none';
+    
+    // Google Apps Script Bridge
+    if (typeof google !== 'undefined' && google.script) {
+        google.script.run
+            .withSuccessHandler(res => {
+                if (res.success) {
+                    currentUser = { 
+                        name: user, 
+                        role: res.role, 
+                        permission: res.permission 
+                    };
+                    
+                    // Transition UI
+                    document.getElementById('loginOverlay').style.display = 'none';
+                    document.getElementById('mainApp').style.display = 'block';
+                    
+                    // Fire up the engine
+                    initializeApp(); 
+                } else {
+                    btn.disabled = false;
+                    btn.innerText = 'Sign In';
+                    errorDiv.style.display = 'block';
+                    errorDiv.textContent = "Invalid credentials. Please try again.";
+                }
+            })
+            .withFailureHandler(err => {
+                btn.disabled = false;
+                btn.innerText = 'Sign In';
+                alert("Server connection failed: " + err);
+            })
+            .checkLogin(user, pass);
+    } else {
+        // Fallback for local testing/development
+        console.warn("Google Script Environment not found. Using Dev Bypass...");
+        setTimeout(() => {
+            currentUser = { name: user, role: 'Admin', permission: 'all' };
+            document.getElementById('loginOverlay').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'block';
+            initializeApp();
+        }, 1000);
+    }
+}
 
 /* ============================================
    INITIALIZATION
@@ -63,6 +134,7 @@ function initializeApp() {
 
 function updateStatusIndicator(status) {
     const { statusIndicator: indicator, statusDot: dot, statusText: text } = elements;
+    if (!indicator) return;
 
     indicator.className = 'status-indicator ' + status;
     dot.className = 'status-dot ' + status + '-dot';
@@ -88,7 +160,6 @@ async function fetchData(showLoader = false, isManual = false) {
 
     console.log(`\n%c📡 Fetching Data...`, 'color: #a5b4fc; font-weight: bold;');
     console.log(`URL: ${fetchUrl}`);
-    console.log(`ShowLoader: ${showLoader} | Manual: ${isManual}`);
 
     try {
         state.isLoading = true;
@@ -112,10 +183,8 @@ async function fetchData(showLoader = false, isManual = false) {
         let json;
         try {
             json = await response.json();
-            console.log('✅ JSON Parsed Successfully:', json);
         } catch (parseError) {
-            console.error('❌ JSON Parse Failed:', parseError);
-            throw new Error('Invalid JSON response');
+            throw new Error('Invalid JSON response from server');
         }
 
         const newData = json.data || {};
@@ -145,6 +214,7 @@ async function fetchData(showLoader = false, isManual = false) {
             } else {
                 showSilentUpdateNotification();
                 smartUpdateUI();
+                renderData(); // Dynamic re-render on data change
             }
         } else {
             console.log('✋ No changes detected');
@@ -164,21 +234,13 @@ async function fetchData(showLoader = false, isManual = false) {
 
         if (error.name === 'AbortError') {
             errorTitle   = 'Request Timeout';
-            errorDetails = `Server took too long to respond (> ${CONFIG.REQUEST_TIMEOUT / 1000}s). The API might be slow or offline.`;
+            errorDetails = `Server took too long to respond (> ${CONFIG.REQUEST_TIMEOUT / 1000}s).`;
         } else if (error.message.includes('404')) {
             errorTitle   = 'API Not Found (404)';
-            errorDetails = `The Google Apps Script URL doesn't exist or has been deleted.`;
             is404Error   = true;
-        } else if (error.message.includes('HTTP')) {
-            errorTitle   = 'Server Error';
-        } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-            errorTitle   = 'Network Error';
-            errorDetails = 'Cannot connect to the server. Check your internet connection or CORS settings.';
         }
 
-        // Fall back to demo data
         if (!state.useDemoData) {
-            console.log('🔄 Switching to DEMO DATA mode...');
             state.useDemoData = true;
             state.rawData     = CONFIG.DEMO_DATA;
             updateFilters();
@@ -195,20 +257,14 @@ async function fetchData(showLoader = false, isManual = false) {
     }
 }
 
-/** Triggered by the date picker and the "Try Again" button. */
 function manualRefresh() {
-    console.log('🔄 Manual Refresh triggered...');
     fetchData(true, true);
 }
 
-/** Tries to connect to a URL the user typed into the error-state input. */
 function useCustomApiUrl() {
     const input  = document.getElementById('customApiUrlInput');
     const newUrl = input.value.trim();
-
     if (!newUrl) { alert('Please enter a valid API URL'); return; }
-
-    console.log('🔧 Setting custom API URL:', newUrl);
     state.customApiUrl = newUrl;
     manualRefresh();
 }
@@ -238,30 +294,16 @@ function showErrorState(title, message, error, is404 = false) {
     if (is404) {
         solutionHTML = `
             <div class="solution-box">
-                <div class="solution-title">
-                    <i class="fas fa-lightbulb"></i>
-                    How to Fix This Error (404)
-                </div>
+                <div class="solution-title"><i class="fas fa-lightbulb"></i> How to Fix This Error (404)</div>
                 <ul class="solution-list">
-                    <li><strong>Check the Google Apps Script URL</strong> — Make sure it's correct and not deleted</li>
-                    <li><strong>Redeploy the script</strong> — Go to Google Apps Script → Deploy → Manage deployments → Edit → Redeploy</li>
-                    <li><strong>Check permissions</strong> — Ensure "Anyone" can access the script</li>
-                    <li><strong>Use a working URL below</strong> — Enter a valid API URL in the field below</li>
-                    <li><strong>Or use Demo Mode</strong> — The dashboard is currently showing sample data</li>
+                    <li><strong>Check the Script URL</strong> — Make sure it's correct.</li>
+                    <li><strong>Redeploy</strong> — Go to Google Apps Script → Deploy → Manage.</li>
+                    <li><strong>Permissions</strong> — Ensure "Anyone" can access.</li>
                 </ul>
             </div>
             <div class="api-url-input-group">
-                <label class="api-url-label" for="customApiUrlInput">
-                    <i class="fas fa-link"></i> Enter New API URL (Optional)
-                </label>
-                <input type="text"
-                       id="customApiUrlInput"
-                       class="api-url-input"
-                       placeholder="https://script.google.com/macros/s/YOUR_ID/exec"
-                       value="">
-                <button class="btn btn-success" onclick="useCustomApiUrl()" style="margin-top: 10px;">
-                    <i class="fas fa-plug"></i> Connect to This URL
-                </button>
+                <input type="text" id="customApiUrlInput" class="api-url-input" placeholder="Enter New URL...">
+                <button class="btn btn-success" onclick="useCustomApiUrl()" style="margin-top: 10px;">Connect</button>
             </div>
         `;
     }
@@ -269,51 +311,31 @@ function showErrorState(title, message, error, is404 = false) {
     elements.contentArea.innerHTML = `
         <div class="error-state">
             <div class="error-header">
-                <div class="error-icon">
-                    <i class="fas ${is404 ? 'fa-unlink' : 'fa-exclamation-triangle'}"></i>
-                </div>
+                <div class="error-icon"><i class="fas ${is404 ? 'fa-unlink' : 'fa-exclamation-triangle'}"></i></div>
                 <div class="error-title-section">
                     <div class="error-code">${is404 ? '404' : '⚠'}</div>
                     <div class="error-title">${title}</div>
-                    <div class="error-subtitle">${message}</div>
                 </div>
             </div>
             <div class="error-message">
-                <strong>What happened:</strong> ${message}<br><br>
-                <strong>Current status:</strong> Dashboard is running in
-                <span style="color: var(--accent-yellow); font-weight: bold;">DEMO MODE</span>
-                with sample data.<br>
-                You can still explore all features and test the interface!
+                <strong>Status:</strong> Running in <span style="color: var(--accent-yellow);">DEMO MODE</span>.
             </div>
             <div class="error-actions">
-                <button class="btn btn-primary" onclick="manualRefresh()">
-                    <i class="fas fa-redo"></i> Try Again
-                </button>
-                <button class="btn btn-success" onclick="loadDemoOnly()">
-                    <i class="fas fa-eye"></i> Show Demo Dashboard
-                </button>
+                <button class="btn btn-primary" onclick="manualRefresh()"><i class="fas fa-redo"></i> Try Again</button>
+                <button class="btn btn-success" onclick="loadDemoOnly()"><i class="fas fa-eye"></i> Demo Dashboard</button>
             </div>
             ${solutionHTML}
             <div class="debug-info">
                 <strong>🔍 Technical Details:</strong><br>
-                ────────────────────────────────<br>
                 Timestamp: ${timestamp}<br>
-                Error Type: ${error?.name ?? 'Unknown'}<br>
-                Error Message: ${error?.message ?? 'N/A'}<br>
-                Using Demo Data: ${state.useDemoData ? '✅ Yes' : 'No'}<br>
-                API URL Attempted: ${currentUrl.substring(0, 60)}...<br>
-                Request Timeout: ${CONFIG.REQUEST_TIMEOUT / 1000}s<br>
-                ────────────────────────────────<br>
-                <br>
-                💡 <strong>Tip:</strong> Open browser Console (F12) for more details
+                Error: ${error?.message || 'N/A'}<br>
+                Attempted URL: ${currentUrl.substring(0, 50)}...
             </div>
         </div>
     `;
 }
 
-/** Switches to demo data without trying to connect. */
 function loadDemoOnly() {
-    console.log('🎭 Loading Demo Dashboard only...');
     state.useDemoData = true;
     state.rawData     = CONFIG.DEMO_DATA;
     updateStatusIndicator('demo');
@@ -331,10 +353,6 @@ function smartUpdateUI() {
     document.querySelectorAll('.stat-value').forEach(el => {
         el.style.transform = 'scale(1.1)';
         setTimeout(() => (el.style.transform = 'scale(1)'), 200);
-    });
-    document.querySelectorAll('.ring-progress').forEach(el => {
-        el.style.filter = 'drop-shadow(0 0 15px var(--accent-emerald-glow))';
-        setTimeout(() => (el.style.filter = 'drop-shadow(0 0 10px var(--accent-emerald-glow))'), 500);
     });
 }
 
@@ -379,13 +397,11 @@ function updateFilters() {
         Object.keys(state.rawData[shift]).forEach(loc => locations.add(loc));
     });
 
-    // Add any configured group names that aren't already locations
     Object.keys(CONFIG.LOCATION_GROUPS).forEach(groupName => locations.add(groupName));
 
     const currentShift = elements.shiftFilter.value;
     const currentLoc   = elements.locFilter.value;
 
-    // Rebuild shift filter
     elements.shiftFilter.innerHTML = '<option value="all">All Shifts</option>';
     Array.from(shifts).sort().forEach(shift => {
         const opt = document.createElement('option');
@@ -395,32 +411,19 @@ function updateFilters() {
         elements.shiftFilter.appendChild(opt);
     });
 
-    // Rebuild location filter
     elements.locFilter.innerHTML = '<option value="all">All Locations</option>';
-
-    if (state.useDemoData) {
-        const demoOpt = document.createElement('option');
-        demoOpt.value = '__demo__';
-        demoOpt.textContent = '📦 Demo Data Mode';
-        demoOpt.style.fontWeight = 'bold';
-        demoOpt.style.color = '#fbbf24';
-        elements.locFilter.appendChild(demoOpt);
-    }
-
-    // Add configured location groups first
+    
     Object.keys(CONFIG.LOCATION_GROUPS).sort().forEach(groupName => {
         const opt = document.createElement('option');
         opt.value = groupName;
         opt.textContent = `📍 ${groupName}`;
-        opt.style.fontWeight = 'bold';
         if (groupName === currentLoc) opt.selected = true;
         elements.locFilter.appendChild(opt);
     });
 
-    // Add remaining individual locations that aren't inside a group
     const groupedLocs = new Set(Object.values(CONFIG.LOCATION_GROUPS).flat());
-    Array.from(locations).filter(loc =>
-        !groupedLocs.has(loc) && !Object.keys(CONFIG.LOCATION_GROUPS).includes(loc)
+    Array.from(locations).filter(loc => 
+        !groupedLocs.has(loc) && !CONFIG.LOCATION_GROUPS[loc]
     ).sort().forEach(loc => {
         const opt = document.createElement('option');
         opt.value = loc;
@@ -456,7 +459,6 @@ function matchesSearch(email, pc) {
 function toggleTeam(tlID) {
     const card = document.getElementById(tlID);
     if (!card) return;
-
     if (card.classList.contains('active')) {
         card.classList.remove('active');
         state.openTeams.delete(tlID);
@@ -473,17 +475,10 @@ function renderData() {
     const selectedShift    = elements.shiftFilter.value;
     const selectedLocation = elements.locFilter.value;
 
-    console.log('🎨 Rendering Dashboard...', { useDemo: state.useDemoData, shifts: Object.keys(state.rawData).length });
-
     elements.contentArea.innerHTML = '';
 
     if (Object.keys(state.rawData).length === 0) {
-        elements.contentArea.innerHTML = `
-            <div class="empty-state" style="padding: 80px; text-align: center;">
-                <i class="fas fa-inbox" style="font-size: 56px; margin-bottom: 20px; opacity: 0.25; display: block;"></i>
-                <p style="font-size: 16px;">No data available.</p>
-            </div>
-        `;
+        elements.contentArea.innerHTML = `<div class="empty-state"><p>No data available.</p></div>`;
         return;
     }
 
@@ -501,222 +496,152 @@ function renderData() {
             if (groupSection) shiftWrapper.appendChild(groupSection);
         } else {
             const renderedLocations = new Set();
-
-            // First pass: render configured location groups
             Object.keys(CONFIG.LOCATION_GROUPS).forEach(groupName => {
                 if (selectedLocation !== 'all' && selectedLocation !== groupName) return;
-
-                const groupMembers      = CONFIG.LOCATION_GROUPS[groupName];
-                const availableMembers  = groupMembers.filter(loc => locations.hasOwnProperty(loc));
-
-                if (availableMembers.length > 0) {
+                const members = CONFIG.LOCATION_GROUPS[groupName];
+                const available = members.filter(loc => locations.hasOwnProperty(loc));
+                if (available.length > 0) {
                     globalAnimationIndex++;
-                    const groupSection = createGroupedLocationSection(groupName, shift, locations, globalAnimationIndex, availableMembers);
-                    shiftWrapper.appendChild(groupSection);
-                    availableMembers.forEach(loc => renderedLocations.add(loc));
+                    const groupSection = createGroupedLocationSection(groupName, shift, locations, globalAnimationIndex, available);
+                    if(groupSection) {
+                        shiftWrapper.appendChild(groupSection);
+                        available.forEach(loc => renderedLocations.add(loc));
+                    }
                 }
             });
 
-            // Second pass: render standalone locations not part of any group
             for (const [locName, teams] of Object.entries(locations)) {
                 if (selectedLocation !== 'all' && locName !== selectedLocation) continue;
                 if (renderedLocations.has(locName)) continue;
-
                 globalAnimationIndex++;
-                const locationSection = createLocationSection(locName, teams, shift, globalAnimationIndex * CONFIG.ANIMATION_STAGGER_DELAY);
-                shiftWrapper.appendChild(locationSection);
+                shiftWrapper.appendChild(createLocationSection(locName, teams, shift, globalAnimationIndex * CONFIG.ANIMATION_STAGGER_DELAY));
             }
         }
-
         elements.contentArea.appendChild(shiftWrapper);
     }
 }
 
-/* ---- Grouped Section (e.g. "Saint Fatima" containing multiple rooms) ---- */
 function createGroupedLocationSection(groupName, shift, allLocations, delayIndex, specificRooms = null) {
     const roomsToRender  = specificRooms || getGroupLocations(groupName);
     const availableRooms = roomsToRender.filter(room => allLocations.hasOwnProperty(room));
-
     if (availableRooms.length === 0) return null;
 
     const section = document.createElement('div');
     section.className = 'location-section';
     section.style.animationDelay = `${delayIndex * CONFIG.ANIMATION_STAGGER_DELAY}ms`;
 
-    let totalSubmitted = 0, totalNotSubmitted = 0, roomData = {};
-
-    availableRooms.forEach(roomName => {
-        const teams = allLocations[roomName];
-        roomData[roomName] = teams;
-        Object.values(teams).forEach(team => {
-            totalSubmitted    += team.submitted.length;
-            totalNotSubmitted += team.notSubmitted.length;
-        });
-    });
-
-    const total      = totalSubmitted + totalNotSubmitted;
-    const percentage = total > 0 ? Math.round((totalSubmitted / total) * 100) : 0;
-
-    let roomsHTML = '';
+    let s = 0, n = 0, roomsHTML = '';
     availableRooms.forEach((roomName, idx) => {
-        roomsHTML += `
-            <div class="room-subsection" style="animation: sectionAppear 0.5s ease ${(delayIndex * CONFIG.ANIMATION_STAGGER_DELAY) + ((idx + 1) * 100)}ms backwards;">
+        const teams = allLocations[roomName];
+        Object.values(teams).forEach(t => { s += t.submitted.length; n += t.notSubmitted.length; });
+        
+        // Pass room index for stagger
+        const grid = createTeamsGridHTML(teams, shift, roomName, idx);
+        if(!grid.includes('No teams authorized')) {
+            roomsHTML += `<div class="room-subsection">
                 <div class="room-title"><i class="fas fa-door-open"></i> ${roomName}</div>
-                ${createTeamsGridHTML(roomData[roomName], shift, roomName, idx)}
-            </div>
-        `;
+                ${grid}
+            </div>`;
+        }
     });
+
+    if(!roomsHTML) return null;
+    const total = s + n;
+    const perc  = total > 0 ? Math.round((s / total) * 100) : 0;
 
     section.innerHTML = `
-        <div class="location-title">
-            <div class="location-icon"><i class="fas fa-building"></i></div>
-            ${groupName}
-            ${state.useDemoData ? '<span class="demo-badge">DEMO DATA</span>' : ''}
-            <span style="font-size: 14px; color: var(--text-muted); font-weight: 600;">(${availableRooms.length} rooms)</span>
-        </div>
-        ${createHeroStatsHTML({ submitted: totalSubmitted, notSubmitted: totalNotSubmitted, total, percentage })}
+        <div class="location-title"><i class="fas fa-building"></i> ${groupName} <span>(${availableRooms.length} rooms)</span></div>
+        ${createHeroStatsHTML({ submitted: s, notSubmitted: n, total, percentage: perc })}
         <div class="room-group">${roomsHTML}</div>
     `;
-
     return section;
 }
 
-/* ---- Individual Location Section ---- */
 function createLocationSection(locName, teams, shift, delay) {
+    const stats = calculateLocationStats(teams);
+    const grid = createTeamsGridHTML(teams, shift, locName);
+    
+    // Don't render empty sections if permissions hide all teams
+    if(grid.includes('No teams authorized')) return document.createDocumentFragment();
+
     const section = document.createElement('div');
     section.className = 'location-section';
     section.style.animationDelay = `${delay}ms`;
-
-    const stats = calculateLocationStats(teams);
-
     section.innerHTML = `
-        <div class="location-title">
-            <div class="location-icon"><i class="fas fa-map-marker-alt"></i></div>
-            ${locName}
-            ${state.useDemoData ? '<span class="demo-badge">DEMO</span>' : ''}
-        </div>
+        <div class="location-title"><i class="fas fa-map-marker-alt"></i> ${locName}</div>
         ${createHeroStatsHTML(stats)}
-        ${createTeamsGridHTML(teams, shift, locName)}
+        ${grid}
     `;
-
     return section;
 }
 
 function calculateLocationStats(teams) {
-    let totalSubmitted = 0, totalNotSubmitted = 0;
-    Object.values(teams).forEach(team => {
-        totalSubmitted    += team.submitted.length;
-        totalNotSubmitted += team.notSubmitted.length;
-    });
-    const total = totalSubmitted + totalNotSubmitted;
-    return {
-        submitted:    totalSubmitted,
-        notSubmitted: totalNotSubmitted,
-        total,
-        percentage: total > 0 ? Math.round((totalSubmitted / total) * 100) : 0
-    };
+    let s = 0, n = 0;
+    Object.values(teams).forEach(t => { s += t.submitted.length; n += t.notSubmitted.length; });
+    const total = s + n;
+    return { submitted: s, notSubmitted: n, total, percentage: total > 0 ? Math.round((s / total) * 100) : 0 };
 }
 
-/* ---- Hero Stats Bar + Progress Ring ---- */
 function createHeroStatsHTML(stats) {
-    const radius       = 54;
-    const circumference = 2 * Math.PI * radius;
-    const dashOffset   = circumference - (stats.percentage / 100) * circumference;
+    const radius = 54;
+    const circ   = 2 * Math.PI * radius;
+    const offset = circ - (stats.percentage / 100) * circ;
 
     return `
         <div class="hero-stats">
-            <div class="stat-card submitted" style="animation-delay: 0.1s;">
-                <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
-                <div class="stat-info">
-                    <span class="stat-label">Submitted</span>
-                    <span class="stat-value">${stats.submitted}</span>
-                </div>
-            </div>
-            <div class="stat-card not-submitted" style="animation-delay: 0.2s;">
-                <div class="stat-icon"><i class="fas fa-exclamation-circle"></i></div>
-                <div class="stat-info">
-                    <span class="stat-label">Pending</span>
-                    <span class="stat-value">${stats.notSubmitted}</span>
-                </div>
-            </div>
-            <div class="stat-card total" style="animation-delay: 0.3s;">
-                <div class="stat-icon"><i class="fas fa-users"></i></div>
-                <div class="stat-info">
-                    <span class="stat-label">Total Users</span>
-                    <span class="stat-value">${stats.total}</span>
-                </div>
-            </div>
-            <div class="progress-ring-container" style="animation-delay: 0.4s;">
-                <div class="ring-wrapper">
-                    <svg class="progress-ring-svg" viewBox="0 0 120 120">
-                        <circle class="ring-bg" cx="60" cy="60" r="${radius}"/>
-                        <circle class="ring-progress" cx="60" cy="60" r="${radius}"
-                                style="stroke-dashoffset: ${dashOffset};"/>
-                    </svg>
-                    <div class="ring-center">
-                        <div class="ring-percentage">${stats.percentage}%</div>
-                        <div class="ring-label">Complete</div>
-                    </div>
-                </div>
-                <div class="ring-details">
-                    <div class="detail-row"><span class="detail-dot done"></span><span>${stats.submitted} Completed</span></div>
-                    <div class="detail-row"><span class="detail-dot pending"></span><span>${stats.notSubmitted} Remaining</span></div>
-                </div>
+            <div class="stat-card submitted"><div class="stat-value">${stats.submitted}</div><div class="stat-label">Submitted</div></div>
+            <div class="stat-card not-submitted"><div class="stat-value">${stats.notSubmitted}</div><div class="stat-label">Pending</div></div>
+            <div class="progress-ring-container">
+                <svg viewBox="0 0 120 120"><circle class="ring-bg" cx="60" cy="60" r="${radius}"/><circle class="ring-progress" cx="60" cy="60" r="${radius}" style="stroke-dashoffset: ${offset}"/></svg>
+                <div class="ring-center"><div class="ring-percentage">${stats.percentage}%</div></div>
             </div>
         </div>
     `;
 }
 
-/* ---- Teams Grid ---- */
 function createTeamsGridHTML(teams, shift, locName, roomIndex = 0) {
-    let teamsHTML  = '<div class="teams-grid">';
-    let cardIndex  = 0;
+    let teamsHTML = '<div class="teams-grid">';
+    let cardIndex = 0;
+    let visibleCards = 0;
 
     for (const [tlName, teamData] of Object.entries(teams)) {
-        const tlID  = generateCardID(shift, locName, tlName);
+        
+        // --- PERMISSION FILTERING ---
+        if (currentUser && currentUser.role === 'Qc' && currentUser.permission === 'only') {
+            if (!tlName.toLowerCase().includes(currentUser.name.toLowerCase())) continue;
+        }
+
+        const tlID = generateCardID(shift, locName, tlName);
         const isActive = state.openTeams.has(tlID) ? 'active' : '';
 
-        const filteredNotSubmitted = teamData.notSubmitted.filter(u => matchesSearch(u.email, u.pc));
-        const filteredSubmitted    = teamData.submitted.filter(u => matchesSearch(u.email, u.pc));
+        const fNot = teamData.notSubmitted.filter(u => matchesSearch(u.email, u.pc));
+        const fSub = teamData.submitted.filter(u => matchesSearch(u.email, u.pc));
 
-        if (state.searchTerm && filteredNotSubmitted.length === 0 && filteredSubmitted.length === 0) continue;
+        if (state.searchTerm && fNot.length === 0 && fSub.length === 0) continue;
 
         cardIndex++;
-        const baseDelay = (roomIndex + 1) * 60 + cardIndex * 60;
+        visibleCards++;
+        const delay = (roomIndex + 1) * 60 + cardIndex * 60;
 
         teamsHTML += `
-            <div class="team-card ${isActive}" id="${tlID}" style="animation-delay: ${baseDelay}ms;">
+            <div class="team-card ${isActive}" id="${tlID}" style="animation-delay: ${delay}ms;">
                 <div class="team-header" onclick="toggleTeam('${tlID}')">
-                    <div class="tl-info">
-                        <span class="team-name"><i class="fas fa-user-tie"></i> ${tlName}</span>
-                        <div class="tl-badge-container">
-                            <span class="badge badge-done"><span class="badge-dot"></span>Done: ${filteredSubmitted.length}</span>
-                            <span class="badge badge-not"><span class="badge-dot"></span>Pending: ${filteredNotSubmitted.length}</span>
-                        </div>
+                    <span class="team-name"><i class="fas fa-user-tie"></i> ${tlName}</span>
+                    <div class="tl-badge-container">
+                        <span class="badge badge-done">Done: ${fSub.length}</span>
+                        <span class="badge badge-not">Pending: ${fNot.length}</span>
                     </div>
-                    <div class="chevron-icon"><i class="fas fa-chevron-down"></i></div>
+                    <i class="fas fa-chevron-down chevron-icon"></i>
                 </div>
                 <div class="team-content">
-                    <div class="content-inner">
-                        <div class="split-view">
-                            <div class="column">
-                                <div class="col-title not-submit">
-                                    <i class="fas fa-clock"></i>Pending
-                                    <span class="col-count">${filteredNotSubmitted.length}</span>
-                                </div>
-                                ${filteredNotSubmitted.length > 0
-                                    ? filteredNotSubmitted.map((u, idx) => createUserBoxHTML(u, 'not-sub', idx)).join('')
-                                    : '<div class="empty-state">No pending users</div>'}
-                            </div>
-                            <div class="column">
-                                <div class="col-title submit">
-                                    <i class="fas fa-check-double"></i>Submitted
-                                    <span class="col-count">${filteredSubmitted.length}</span>
-                                </div>
-                                ${filteredSubmitted.length > 0
-                                    ? filteredSubmitted.map((u, idx) => createUserBoxHTML(u, 'sub', idx)).join('')
-                                    : '<div class="empty-state">No submissions yet</div>'}
-                            </div>
+                    <div class="split-view">
+                        <div class="column">
+                            <div class="col-title not-submit">Pending (${fNot.length})</div>
+                            ${fNot.map((u, i) => createUserBoxHTML(u, 'not-sub', i)).join('') || '<div class="empty-state">No pending</div>'}
+                        </div>
+                        <div class="column">
+                            <div class="col-title submit">Submitted (${fSub.length})</div>
+                            ${fSub.map((u, i) => createUserBoxHTML(u, 'sub', i)).join('') || '<div class="empty-state">No submissions</div>'}
                         </div>
                     </div>
                 </div>
@@ -724,21 +649,17 @@ function createTeamsGridHTML(teams, shift, locName, roomIndex = 0) {
         `;
     }
 
-    teamsHTML += '</div>';
-    return teamsHTML;
+    return visibleCards > 0 ? (teamsHTML + '</div>') : '<div class="empty-state">No teams authorized.</div>';
 }
 
-/* ---- User Box ---- */
 function createUserBoxHTML(user, type, index) {
-    return `
-        <div class="user-box ${type}-box" style="animation-delay: ${index * 40}ms;">
-            <span class="u-email">${escapeHTML(user.email)}</span>
-            <span class="u-meta"><i class="fas fa-desktop"></i>PC: ${escapeHTML(user.pc)}</span>
-        </div>
-    `;
+    return `<div class="user-box ${type}-box" style="animation-delay: ${index * 40}ms;">
+        <span class="u-email">${escapeHTML(user.email)}</span>
+        <span class="u-meta"><i class="fas fa-desktop"></i>PC: ${escapeHTML(user.pc)}</span>
+    </div>`;
 }
 
 /* ============================================
    BOOT
    ============================================ */
-window.addEventListener('DOMContentLoaded', initializeApp);
+// Note: initializeApp is now called after handleLogin success.
