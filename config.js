@@ -9,6 +9,9 @@
 const CONFIG = {
     // ⚠️ DEFAULT API URL - CHANGE THIS TO YOUR WORKING URL
     API_URL: 'https://script.google.com/macros/s/AKfycbxmz0gT1rUXChCW42soPQXYtcpmir9reKAhnP9xKCvWii0adGkA7glu0WbQwVaAIisG/exec',
+    
+    // Login Users Sheet API URL (you need to create this endpoint)
+    LOGIN_API_URL: 'https://script.google.com/macros/s/YOUR_LOGIN_SCRIPT_ID/exec',
 
     REFRESH_INTERVAL: 10000,
     REQUEST_TIMEOUT: 15000,
@@ -60,6 +63,15 @@ const CONFIG = {
                     notSubmitted: [
                         { email: "rana.mostafa@company.com", pc: "PC-New-01" },
                         { email: "hossam.farid@company.com", pc: "Lab-PC-04" }
+                    ]
+                },
+                "Asmaa Khaled (M)": {
+                    submitted: [
+                        { email: "user1@company.com", pc: "PC-001" }
+                    ],
+                    notSubmitted: [
+                        { email: "user2@company.com", pc: "PC-002" },
+                        { email: "user3@company.com", pc: "PC-003" }
                     ]
                 }
             },
@@ -114,5 +126,11 @@ const CONFIG = {
                 }
             }
         }
-    }
+    },
+    
+    // Demo login users for testing
+    DEMO_USERS: [
+        { username: "Fayez", password: "2468", role: "supervisors", permission: "all" },
+        { username: "Asmaa Khaled", password: "123456", role: "Qc", permission: "only" }
+    ]
 };
