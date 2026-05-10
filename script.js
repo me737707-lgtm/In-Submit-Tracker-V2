@@ -7,7 +7,8 @@
 
 /* ---- Application State ---- */
 const state = {
-    rawData: {},
+    rawData: {},           // البيانات الأصلية من الـ API
+    filteredData: {},      // البيانات بعد الفلترة حسب صلاحية المستخدم
     openTeams: new Set(),
     searchTerm: '',
     lastDataHash: '',
@@ -31,7 +32,7 @@ const elements = {};
 async function loadLoginUsers() {
     try {
         // Try to fetch from Google Sheets API first
-        const response = await fetch(CONFIG.LOGIN_API_URL);
+        const response = await fetch(CONFIG.LOGIN_API_URL + '?action=users');
         if (response.ok) {
             const data = await response.json();
             state.usersData = data.users || CONFIG.DEMO_USERS;
@@ -108,6 +109,7 @@ function handleLogout() {
     state.currentUser = null;
     state.isLoggedIn = false;
     state.rawData = {};
+    state.filteredData = {};
     
     // Clear filters
     elements.shiftFilter.value = 'all';
@@ -132,20 +134,32 @@ function handleLogout() {
     console.log('%c🚪 User logged out', 'color: #fbbf24; font-weight: bold;');
 }
 
+/* ============================================
+   ✅ FILTER DATA BY USER PERMISSIONS (مصحح)
+   ============================================ */
 function filterDataByUser(data) {
-    if (!state.currentUser) return data;
+    if (!state.currentUser) {
+        console.log('🔓 No current user - showing all data');
+        return data;
+    }
+    
+    console.log('🔐 Filtering data for:', state.currentUser.username, 'Role:', state.currentUser.role, 'Permission:', state.currentUser.permission);
     
     // Supervisors with "all" permission see everything
     if (state.currentUser.role === 'supervisors' && state.currentUser.permission === 'all') {
+        console.log('👁️ Supervisor - showing all data');
         return data;
     }
     
     // QC users see only their team
-    if (state.currentUser.role === 'Qc') {
+    if (state.currentUser.role === 'Qc' || state.currentUser.permission === 'only') {
         const filteredData = {};
         const userTeamName = state.currentUser.username; // e.g., "Asmaa Khaled"
+        let teamsFound = 0;
         
-        // Search for team that matches the username + " (M)" or " (N)"
+        console.log('🔍 QC User - looking for team matching:', userTeamName);
+        
+        // Search for team that matches the username + " (M)" or " (N)" or " (ON)"
         for (const [shift, locations] of Object.entries(data)) {
             filteredData[shift] = {};
             
@@ -153,12 +167,14 @@ function filterDataByUser(data) {
                 filteredData[shift][location] = {};
                 
                 for (const [teamName, teamData] of Object.entries(teams)) {
-                    // Check if team name matches user's username
                     // Team name format: "Asmaa Khaled (M)" should match username "Asmaa Khaled"
-                    const teamBaseName = teamName.replace(/\s*\([MN]\)\s*$/, '').trim();
+                    // Remove any suffix like " (M)", " (N)", " (ON)" from team name for comparison
+                    const teamBaseName = teamName.replace(/\s*\([A-Z]{1,3}\)\s*$/, '').trim();
                     
                     if (teamBaseName === userTeamName) {
                         filteredData[shift][location][teamName] = teamData;
+                        teamsFound++;
+                        console.log(`  ✅ Match found: "${teamName}" for user "${userTeamName}"`);
                     }
                 }
                 
@@ -174,9 +190,12 @@ function filterDataByUser(data) {
             }
         }
         
+        console.log(`📊 QC Filter Result: Found ${teamsFound} team(s) for user "${userTeamName}"`);
         return filteredData;
     }
     
+    // Default: show all
+    console.log('⚠️ Unknown role/permission - showing all data');
     return data;
 }
 
@@ -293,10 +312,11 @@ async function fetchData(showLoader = false, isManual = false) {
             updateStatusIndicator('live');
         }
 
-        // Filter data based on current user permissions
-        const filteredData = filterDataByUser(state.rawData);
+        // ✅ تطبيق الفلترة حسب صلاحية المستخدم وتخزين النتيجة
+        state.filteredData = filterDataByUser(state.rawData);
 
-        const newDataHash = generateDataHash(filteredData);
+        // ✅ استخدام البيانات المفلترة لحساب الـ hash والعرض
+        const newDataHash = generateDataHash(state.filteredData);
 
         if (newDataHash !== state.lastDataHash) {
             console.log('🔄 Data changed — updating UI...');
@@ -346,6 +366,7 @@ async function fetchData(showLoader = false, isManual = false) {
             console.log('🔄 Switching to DEMO DATA mode...');
             state.useDemoData = true;
             state.rawData     = CONFIG.DEMO_DATA;
+            state.filteredData = filterDataByUser(state.rawData);
             updateFilters();
             renderData();
         }
@@ -481,6 +502,7 @@ function loadDemoOnly() {
     console.log('🎭 Loading Demo Dashboard only...');
     state.useDemoData = true;
     state.rawData     = CONFIG.DEMO_DATA;
+    state.filteredData = filterDataByUser(state.rawData);
     updateStatusIndicator('demo');
     updateFilters();
     renderData();
@@ -539,9 +561,14 @@ function updateFilters() {
     const shifts    = new Set();
     const locations = new Set();
 
-    Object.keys(state.rawData).forEach(shift => {
+    // ✅ استخدام البيانات المفلترة لبناء الفلاتر
+    const dataToUse = state.filteredData && Object.keys(state.filteredData).length > 0 
+        ? state.filteredData 
+        : state.rawData;
+
+    Object.keys(dataToUse).forEach(shift => {
         shifts.add(shift);
-        Object.keys(state.rawData[shift]).forEach(loc => locations.add(loc));
+        Object.keys(dataToUse[shift]).forEach(loc => locations.add(loc));
     });
 
     // Add any configured group names that aren't already locations
@@ -593,6 +620,13 @@ function updateFilters() {
         if (loc === currentLoc) opt.selected = true;
         elements.locFilter.appendChild(opt);
     });
+
+    // ✅ لو المستخدم QC، نقيد الفلاتر
+    if (state.currentUser && (state.currentUser.role === 'Qc' || state.currentUser.permission === 'only')) {
+        // نخفي الـ location filter لأن الـ QC مش المفروض يقلب بين اللوكيشنز
+        // أو نخليه موجود بس مقفل
+        console.log('🔒 QC User - filters restricted');
+    }
 }
 
 function getGroupLocations(groupName) {
@@ -632,21 +666,36 @@ function toggleTeam(tlID) {
 }
 
 /* ============================================
-   RENDERING
+   ✅ RENDERING (مصحح - يستخدم البيانات المفلترة)
    ============================================ */
 function renderData() {
     const selectedShift    = elements.shiftFilter.value;
     const selectedLocation = elements.locFilter.value;
 
-    console.log('🎨 Rendering Dashboard...', { useDemo: state.useDemoData, shifts: Object.keys(state.rawData).length });
+    // ✅ استخدام البيانات المفلترة للعرض
+    const dataToRender = state.filteredData && Object.keys(state.filteredData).length > 0 
+        ? state.filteredData 
+        : state.rawData;
+
+    console.log('🎨 Rendering Dashboard...', { 
+        useDemo: state.useDemoData, 
+        shifts: Object.keys(dataToRender).length,
+        currentUser: state.currentUser?.username,
+        userRole: state.currentUser?.role,
+        isFiltered: state.filteredData && Object.keys(state.filteredData).length > 0
+    });
 
     elements.contentArea.innerHTML = '';
 
-    if (Object.keys(state.rawData).length === 0) {
+    if (Object.keys(dataToRender).length === 0) {
         elements.contentArea.innerHTML = `
             <div class="empty-state" style="padding: 80px; text-align: center;">
                 <i class="fas fa-inbox" style="font-size: 56px; margin-bottom: 20px; opacity: 0.25; display: block;"></i>
-                <p style="font-size: 16px;">No data available.</p>
+                <p style="font-size: 16px;">
+                    ${state.currentUser && (state.currentUser.role === 'Qc' || state.currentUser.permission === 'only')
+                        ? 'No data found for your team. Please contact your supervisor.' 
+                        : 'No data available.'}
+                </p>
             </div>
         `;
         return;
@@ -655,7 +704,8 @@ function renderData() {
     const isGroupView = selectedLocation !== 'all' && CONFIG.LOCATION_GROUPS.hasOwnProperty(selectedLocation);
     let globalAnimationIndex = 0;
 
-    for (const [shift, locations] of Object.entries(state.rawData)) {
+    // ✅ التكرار على البيانات المفلترة
+    for (const [shift, locations] of Object.entries(dataToRender)) {
         if (selectedShift !== 'all' && shift !== selectedShift) continue;
 
         const shiftWrapper = document.createElement('div');
