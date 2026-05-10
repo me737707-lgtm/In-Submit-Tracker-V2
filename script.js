@@ -29,21 +29,70 @@ const elements = {};
 /* ============================================
    LOGIN FUNCTIONS
    ============================================ */
-async function loadLoginUsers() {
+async function loadLoginUsers(forceRefresh = false) {
+    const apiUrl = CONFIG.LOGIN_API_URL + '?action=users';
+    
     try {
-        // Try to fetch from Google Sheets API first
-        const response = await fetch(CONFIG.LOGIN_API_URL + '?action=users');
-        if (response.ok) {
-            const data = await response.json();
-            state.usersData = data.users || CONFIG.DEMO_USERS;
-        } else {
-            // Fallback to demo users
-            state.usersData = CONFIG.DEMO_USERS;
+        console.log('📥 Fetching users from API:', apiUrl);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 seconds timeout
+        
+        const response = await fetch(apiUrl, {
+            signal: controller.signal,
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
+            }
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
+        
+        const data = await response.json();
+        console.log('✅ Users fetched successfully:', data);
+        
+        if (data.success && data.users && data.users.length > 0) {
+            state.usersData = data.users;
+            console.log(`✅ Loaded ${state.usersData.length} users from sheet:`, 
+                       state.usersData.map(u => u.username).join(', '));
+            
+            // احفظ الـ timestamp عشان نعرف آخر تحديث
+            state.usersLastUpdate = new Date();
+            
+        } else {
+            console.warn('⚠️ API returned success but no users, using demo users');
+            state.usersData = CONFIG.DEMO_USERS || [];
+        }
+        
     } catch (error) {
-        console.warn('Could not load login users, using demo data:', error);
-        state.usersData = CONFIG.DEMO_USERS;
+        console.error('❌ Failed to load users from API:', error.message);
+        console.warn('⚠️ Falling back to demo users');
+        
+        // استخدم الـ demo users كـ fallback
+        if (CONFIG.DEMO_USERS && CONFIG.DEMO_USERS.length > 0) {
+            state.usersData = CONFIG.DEMO_USERS;
+        } else {
+            state.usersData = [];
+        }
+        
+        // اعرض رسالة خطأ في الـ console بس
+        console.log('💡 Tip: Make sure the Google Apps Script is deployed and accessible');
     }
+}
+
+// دالة لتحديث المستخدمين في الخلفية كل 30 ثانية
+function startUsersAutoRefresh() {
+    setInterval(() => {
+        if (state.isLoggedIn) {
+            console.log('🔄 Auto-refreshing users list...');
+            loadLoginUsers(true);
+        }
+    }, 30000); // كل 30 ثانية
 }
 
 function handleLogin(event) {
@@ -55,42 +104,58 @@ function handleLogin(event) {
     const loginBtn = document.getElementById('loginBtn');
     const loginLoading = document.getElementById('loginLoading');
     
+    console.log('🔐 Login attempt for:', username);
+    console.log('📋 Available users:', state.usersData.map(u => u.username).join(', '));
+    
     // Show loading
     loginBtn.style.display = 'none';
     loginLoading.style.display = 'flex';
     loginError.style.display = 'none';
     
-    // Simulate async validation
-    setTimeout(() => {
-        const user = state.usersData.find(u => 
-            u.username.toLowerCase() === username.toLowerCase() && 
-            u.password === password
-        );
+    // تأكد من إن عندنا users
+    if (!state.usersData || state.usersData.length === 0) {
+        console.error('❌ No users loaded!');
+        loginError.innerHTML = '<i class="fas fa-exclamation-circle"></i><span>No users available. Please check your connection.</span>';
+        loginError.style.display = 'flex';
+        loginBtn.style.display = 'flex';
+        loginLoading.style.display = 'none';
+        return;
+    }
+    
+    // ابحث عن المستخدم (case-insensitive)
+    const user = state.usersData.find(u => 
+        u.username.toString().toLowerCase() === username.toLowerCase() && 
+        u.password.toString() === password
+    );
+    
+    console.log('🔍 Search result:', user ? 'Found' : 'Not found');
+    
+    if (user) {
+        // ✅ Login successful
+        state.currentUser = user;
+        state.isLoggedIn = true;
         
-        if (user) {
-            // Login successful
-            state.currentUser = user;
-            state.isLoggedIn = true;
-            
-            // Hide login overlay
-            document.getElementById('loginOverlay').style.display = 'none';
-            
-            // Show user info in header
-            showUserInfo(user);
-            
-            // Initialize the app
-            initializeApp();
-            
-            console.log(`%c✅ Login successful: ${user.username} (${user.role})`, 'color: #6ee7b7; font-weight: bold;');
-        } else {
-            // Login failed
-            loginError.style.display = 'flex';
-            loginBtn.style.display = 'flex';
-            loginLoading.style.display = 'none';
-            
-            console.log('%c❌ Login failed', 'color: #fb7185; font-weight: bold;');
-        }
-    }, 800);
+        // Hide login overlay
+        document.getElementById('loginOverlay').style.display = 'none';
+        
+        // Show user info in header
+        showUserInfo(user);
+        
+        // Initialize the app
+        initializeApp();
+        
+        console.log(`%c✅ Login successful: ${user.username} (${user.role} - ${user.permission})`, 
+                   'color: #6ee7b7; font-weight: bold; font-size: 14px;');
+    } else {
+        // ❌ Login failed
+        console.warn('❌ Invalid credentials. Available users:', 
+                    state.usersData.map(u => u.username).join(', '));
+        
+        loginError.innerHTML = '<i class="fas fa-exclamation-circle"></i><span>Invalid username or password</span>';
+        loginError.style.display = 'flex';
+        loginBtn.style.display = 'flex';
+        loginLoading.style.display = 'none';
+    }
 }
 
 function showUserInfo(user) {
@@ -208,6 +273,9 @@ async function initializeApp() {
 
     // Load login users first
     await loadLoginUsers();
+    
+    // ✅ ابدأ الـ auto-refresh
+    startUsersAutoRefresh();
 
     // Cache DOM elements
     elements.contentArea    = document.getElementById('contentArea');
