@@ -11,7 +11,7 @@ const CONFIG = {
     API_URL: 'https://script.google.com/macros/s/AKfycbxmz0gT1rUXChCW42soPQXYtcpmir9reKAhnP9xKCvWii0adGkA7glu0WbQwVaAIisG/exec',
     
     // Login Users Sheet API URL (you need to create this endpoint)
-    LOGIN_API_URL: 'https://script.google.com/macros/s/YOUR_LOGIN_SCRIPT_ID/exec',
+    LOGIN_API_URL: 'https://script.google.com/macros/s/AKfycbxmz0gT1rUXChCW42soPQXYtcpmir9reKAhnP9xKCvWii0adGkA7glu0WbQwVaAIisG/exec',
 
     REFRESH_INTERVAL: 10000,
     REQUEST_TIMEOUT: 15000,
