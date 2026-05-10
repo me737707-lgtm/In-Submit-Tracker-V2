@@ -5,105 +5,117 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Submit Tracker | Teams Live Dashboard</title>
 
-    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-    <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <!-- Application Stylesheet -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <!-- ── Ambient Background Orbs ─────────────────────── -->
-    <div class="ambient-orb orb-1"></div>
-    <div class="ambient-orb orb-2"></div>
-    <div class="ambient-orb orb-3"></div>
-
-    <!-- ── SVG Gradient Definition (used by progress ring) ─ -->
-    <svg style="position: absolute; width: 0; height: 0;" aria-hidden="true">
-        <defs>
-            <linearGradient id="gradient-progress" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%"   stop-color="#a5b4fc"/>
-                <stop offset="50%"  stop-color="#6ee7b7"/>
-                <stop offset="100%" stop-color="#6ee7b7"/>
-            </linearGradient>
-        </defs>
-    </svg>
-
-    <!-- ── Silent Update Toast ─────────────────────────── -->
-    <div class="silent-update" id="silentUpdate" aria-live="polite">
-        <i class="fas fa-sync-alt"></i>
-        <span>Data updated</span>
+    <div id="loginOverlay" class="login-overlay">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="login-icon">
+                    <i class="fas fa-shield-alt"></i>
+                </div>
+                <h2>Submit Tracker Login</h2>
+                <p>Please enter your credentials to access the dashboard</p>
+            </div>
+            <div class="login-body">
+                <div class="input-group">
+                    <label for="username"><i class="fas fa-user"></i> Username</label>
+                    <input type="text" id="username" placeholder="Enter your name">
+                </div>
+                <div class="input-group">
+                    <label for="password"><i class="fas fa-key"></i> Password</label>
+                    <input type="password" id="password" placeholder="••••••••">
+                </div>
+                <button id="loginBtn" class="login-submit-btn" onclick="handleLogin()">
+                    <span>Sign In</span>
+                    <i class="fas fa-arrow-right"></i>
+                </button>
+                <div id="loginError" class="login-error">
+                    <i class="fas fa-exclamation-circle"></i> Invalid Username or Password
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- ── Main Application Wrapper ────────────────────── -->
-    <div class="app-container">
+    <div id="mainApp" style="display: none;">
+        
+        <div class="ambient-orb orb-1"></div>
+        <div class="ambient-orb orb-2"></div>
+        <div class="ambient-orb orb-3"></div>
 
-        <!-- Sticky Header -->
-        <header id="mainHeader">
-            <div class="header-left">
-                <!-- Logo -->
-                <div class="logo-section">
-                    <div class="logo-icon" aria-hidden="true">
-                        <i class="fas fa-chart-line"></i>
+        <svg style="position: absolute; width: 0; height: 0;" aria-hidden="true">
+            <defs>
+                <linearGradient id="gradient-progress" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%"   stop-color="#a5b4fc"/>
+                    <stop offset="50%"  stop-color="#6ee7b7"/>
+                    <stop offset="100%" stop-color="#6ee7b7"/>
+                </linearGradient>
+            </defs>
+        </svg>
+
+        <div class="silent-update" id="silentUpdate" aria-live="polite">
+            <i class="fas fa-sync-alt"></i>
+            <span>Data updated</span>
+        </div>
+
+        <div class="app-container">
+            <header id="mainHeader">
+                <div class="header-left">
+                    <div class="logo-section">
+                        <div class="logo-icon" aria-hidden="true">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <div class="brand-text">
+                            <h1>Submit Tracker</h1>
+                            <p>Live Operations Dashboard</p>
+                        </div>
                     </div>
-                    <div class="brand-text">
-                        <h1>Submit Tracker</h1>
-                        <p>Live Operations Dashboard</p>
+                    <div class="status-indicator" id="statusIndicator" role="status" aria-live="polite">
+                        <div class="status-dot live-dot" id="statusDot"></div>
+                        <span id="statusText">INITIALIZING...</span>
                     </div>
                 </div>
 
-                <!-- Connection Status Pill -->
-                <div class="status-indicator" id="statusIndicator" role="status" aria-live="polite">
-                    <div class="status-dot live-dot" id="statusDot"></div>
-                    <span id="statusText">INITIALIZING...</span>
-                </div>
-            </div>
-
-            <!-- Filter Controls -->
-            <div class="controls">
-                <div class="search-wrapper">
+                <div class="controls">
+                    <div class="search-wrapper">
+                        <input
+                            type="text"
+                            class="search-input"
+                            id="searchInput"
+                            placeholder="Search emails or PC… (Ctrl+K)"
+                            aria-label="Search by email or PC name"
+                            oninput="handleSearch()"
+                        >
+                        <i class="fas fa-search search-icon" aria-hidden="true"></i>
+                    </div>
+                    <select id="shiftFilter" aria-label="Filter by shift" onchange="renderData()">
+                        <option value="all">All Shifts</option>
+                    </select>
+                    <select id="locFilter" aria-label="Filter by location" onchange="renderData()">
+                        <option value="all">All Locations</option>
+                    </select>
                     <input
-                        type="text"
-                        class="search-input"
-                        id="searchInput"
-                        placeholder="Search emails or PC… (Ctrl+K)"
-                        aria-label="Search by email or PC name"
-                        oninput="handleSearch()"
+                        type="date"
+                        id="datePicker"
+                        aria-label="Select date"
+                        onchange="manualRefresh()"
                     >
-                    <i class="fas fa-search search-icon" aria-hidden="true"></i>
                 </div>
+            </header>
 
-                <select id="shiftFilter" aria-label="Filter by shift" onchange="renderData()">
-                    <option value="all">All Shifts</option>
-                </select>
+            <main id="contentArea" aria-live="polite"></main>
+        </div>
+    </div>
 
-                <select id="locFilter" aria-label="Filter by location" onchange="renderData()">
-                    <option value="all">All Locations</option>
-                </select>
-
-                <input
-                    type="date"
-                    id="datePicker"
-                    aria-label="Select date"
-                    onchange="manualRefresh()"
-                >
-            </div>
-        </header>
-
-        <!-- Dynamic Content Area (populated by script.js) -->
-        <main id="contentArea" aria-live="polite"></main>
-
-    </div><!-- /.app-container -->
-
-    <!-- ── Scripts (defer keeps them non-blocking) ─────── -->
-    <!-- config.js must load before script.js so CONFIG is defined -->
-    <script src="config.js"  defer></script>
-    <script src="script.js"  defer></script>
+    <script src="config.js" defer></script>
+    <script src="script.js" defer></script>
 
 </body>
 </html>
