@@ -21,6 +21,7 @@ const state = {
     currentUser: null,
     usersData: [],
     isLoggedIn: false
+    usersRefreshInterval: null  // 
 };
 
 /* ---- Cached DOM Elements ---- */
@@ -87,7 +88,12 @@ async function loadLoginUsers(forceRefresh = false) {
 
 // دالة لتحديث المستخدمين في الخلفية كل 30 ثانية
 function startUsersAutoRefresh() {
-    setInterval(() => {
+    // امسح أي interval سابق لو موجود
+    if (state.usersRefreshInterval) {
+        clearInterval(state.usersRefreshInterval);
+    }
+    
+    state.usersRefreshInterval = setInterval(() => {
         if (state.isLoggedIn) {
             console.log('🔄 Auto-refreshing users list...');
             loadLoginUsers(true);
@@ -175,6 +181,12 @@ function handleLogout() {
     state.isLoggedIn = false;
     state.rawData = {};
     state.filteredData = {};
+    
+    // ✅ أوقف الـ auto-refresh
+    if (state.usersRefreshInterval) {
+        clearInterval(state.usersRefreshInterval);
+        state.usersRefreshInterval = null;
+    }
     
     // Clear filters
     elements.shiftFilter.value = 'all';
