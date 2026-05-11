@@ -134,6 +134,6 @@ const CONFIG = {
     { username: "Asmaa Khaled", password: "123456", role: "Qc", permission: "only" },
     { username: "Wafaa Fathy", password: "123456", role: "Qc", permission: "only" },  
     { username: "Nesma Mustafa", password: "123456", role: "Qc", permission: "only" },
-    { username: "Shika", password: "m@1999", role: "Qc", permission: "all" }
+    { username: "Shika", password: "m@1999", role: "supervisors", permission: "all" }
     ]
 };
