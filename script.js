@@ -20,8 +20,8 @@ const state = {
     // Login state
     currentUser: null,
     usersData: [],
-    isLoggedIn: false,              // ✅ تم إضافة الفاصلة هنا
-    usersRefreshInterval: null      // ✅ وتم إضافة الفاصلة هنا كمان
+    isLoggedIn: false,
+    usersRefreshInterval: null
 };
 
 /* ---- Cached DOM Elements ---- */
@@ -189,24 +189,34 @@ function handleLogout() {
     }
     
     // Clear filters
-    elements.shiftFilter.value = 'all';
-    elements.locFilter.value = 'all';
-    elements.searchInput.value = '';
+    if (elements.shiftFilter) elements.shiftFilter.value = 'all';
+    if (elements.locFilter) elements.locFilter.value = 'all';
+    if (elements.searchInput) elements.searchInput.value = '';
     state.searchTerm = '';
     
     // Hide user info
-    document.getElementById('userInfo').style.display = 'none';
+    const userInfo = document.getElementById('userInfo');
+    if (userInfo) userInfo.style.display = 'none';
+    
+    // ✅ Reset login form states
+    const loginLoading = document.getElementById('loginLoading');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginError = document.getElementById('loginError');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    
+    if (loginLoading) loginLoading.style.display = 'none';
+    if (loginBtn) loginBtn.style.display = 'flex';
+    if (loginError) loginError.style.display = 'none';
+    if (usernameInput) usernameInput.value = '';
+    if (passwordInput) passwordInput.value = '';
     
     // Show login overlay
-    document.getElementById('loginOverlay').style.display = 'flex';
-    
-    // Clear form
-    document.getElementById('username').value = '';
-    document.getElementById('password').value = '';
-    document.getElementById('loginError').style.display = 'none';
+    const loginOverlay = document.getElementById('loginOverlay');
+    if (loginOverlay) loginOverlay.style.display = 'flex';
     
     // Clear content
-    elements.contentArea.innerHTML = '';
+    if (elements.contentArea) elements.contentArea.innerHTML = '';
     
     console.log('%c🚪 User logged out', 'color: #fbbf24; font-weight: bold;');
 }
