@@ -908,84 +908,182 @@ select {
 }
 
 /* ============================================
-   RESPONSIVE — MEDIA QUERIES
+   RESPONSIVE — MEDIA QUERIES (مصحح للموبايل)
    ============================================ */
+
+/* Tablet and below */
 @media (max-width: 1024px) {
-    .teams-grid  { grid-template-columns: 1fr; }
-    .hero-stats  { grid-template-columns: repeat(2, 1fr); }
+    .teams-grid { grid-template-columns: 1fr; }
+    .hero-stats { grid-template-columns: repeat(2, 1fr); }
 }
 
-/* ✅ أصلح مشكلة الـ scroll على الموبايل */
+/* Mobile - Main Fixes */
 @media (max-width: 768px) {
-    /* خلي الـ body يقدر يعمل scroll */
+    /* Fix body and container */
     body {
-        overflow-y: auto;
-        height: 100vh;
-        position: relative;
-    }
-    
-    /* خلي الـ app container يقدر يعمل scroll */
-    .app-container {
-        overflow-y: auto;
-        max-height: 100vh;
-        padding-bottom: 100px; /* مساحة إضافية في الآخر */
-    }
-    
-    /* خلي الـ teams grid يقدر يعمل scroll */
-    .teams-grid {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-lg);
-    }
-    
-    /* خلي الـ team cards تظهر كاملة */
-    .team-card {
-        max-height: none;
-        overflow: visible;
-    }
-    
-    /* لما الـ team يكون مفتوح، خلي المحتوى يظهر */
-    .team-card.active .team-content {
-        max-height: 2000px; /* زيادة المسافة عشان كل اليوزرز يبانوا */
-        overflow-y: auto;
-    }
-    
-    /* خلي الـ user boxes تظهر كاملة */
-    .user-box {
-        overflow: visible;
-        word-break: break-word;
-    }
-    
-    /* أصلح الـ header على الموبايل */
-    header {
-        position: relative;
-        top: 0;
-        max-height: none;
-        overflow: visible;
-    }
-    
-    /* خلي الـ controls تظهر بشكل صح */
-    .controls {
-        flex-direction: column;
+        overflow-x: hidden;
         width: 100%;
     }
     
-    .controls select,
-    .controls input {
+    .app-container {
+        padding: var(--space-md);
         width: 100%;
         max-width: 100%;
     }
-}
-
-/* ✅ تأكد إن الـ content area يقدر يعمل scroll */
-#contentArea {
-    overflow-y: auto;
-    min-height: 100vh;
-    padding-bottom: 50px;
-}
-
-/* ✅ أصلح مشكلة الـ split view على الموبايل */
-@media (max-width: 768px) {
+    
+    /* Fix header layout */
+    header {
+        flex-direction: column;
+        align-items: stretch;
+        padding: var(--space-md);
+        gap: var(--space-md);
+        position: relative;
+        top: 0;
+    }
+    
+    .header-left {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-md);
+        width: 100%;
+    }
+    
+    .logo-section {
+        width: 100%;
+    }
+    
+    .brand-text h1 {
+        font-size: 18px;
+    }
+    
+    .brand-text p {
+        font-size: 10px;
+    }
+    
+    .logo-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+    }
+    
+    /* Fix controls */
+    .controls {
+        flex-direction: column;
+        width: 100%;
+        gap: var(--space-sm);
+    }
+    
+    .search-wrapper {
+        width: 100%;
+    }
+    
+    .search-input {
+        width: 100%;
+        min-width: auto;
+        padding-left: 42px;
+    }
+    
+    select, input {
+        width: 100%;
+        min-width: auto;
+        font-size: 14px; /* Prevent zoom on iOS */
+    }
+    
+    /* Fix user info */
+    .user-info {
+        width: 100%;
+        justify-content: space-between;
+        padding: var(--space-sm);
+    }
+    
+    .user-badge {
+        font-size: 12px;
+    }
+    
+    /* Fix hero stats */
+    .hero-stats {
+        grid-template-columns: 1fr;
+        gap: var(--space-sm);
+    }
+    
+    .stat-card {
+        padding: var(--space-md);
+    }
+    
+    .stat-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+    }
+    
+    .stat-value {
+        font-size: 24px;
+    }
+    
+    .stat-label {
+        font-size: 10px;
+    }
+    
+    /* Fix progress ring */
+    .progress-ring-container {
+        flex-direction: column;
+        padding: var(--space-md);
+    }
+    
+    .ring-wrapper {
+        width: 100px;
+        height: 100px;
+    }
+    
+    .progress-ring-svg {
+        width: 100px;
+        height: 100px;
+    }
+    
+    .ring-percentage {
+        font-size: 24px;
+    }
+    
+    .ring-details {
+        width: 100%;
+        text-align: center;
+    }
+    
+    /* Fix location */
+    .location-title {
+        font-size: 20px;
+        flex-wrap: wrap;
+    }
+    
+    .location-icon {
+        width: 36px;
+        height: 36px;
+        font-size: 16px;
+    }
+    
+    /* Fix teams grid */
+    .teams-grid {
+        grid-template-columns: 1fr;
+        gap: var(--space-md);
+    }
+    
+    .team-card {
+        width: 100%;
+    }
+    
+    .team-header {
+        padding: var(--space-md);
+    }
+    
+    .team-name {
+        font-size: 15px;
+    }
+    
+    .content-inner {
+        padding: var(--space-md);
+    }
+    
+    /* Fix split view */
     .split-view {
         grid-template-columns: 1fr;
         gap: var(--space-md);
@@ -993,23 +1091,84 @@ select {
     
     .column {
         width: 100%;
-        max-height: 400px; /* حد أقصى للـ height */
-        overflow-y: auto;  /* خليها تعمل scroll */
+        max-height: none;
+        overflow-y: visible;
     }
     
-    /* خلي الـ pending و submitted columns تظهر تحت بعض */
-    .column:not(:last-child) {
-        margin-bottom: var(--space-lg);
+    /* Fix room group */
+    .room-group {
+        margin-left: var(--space-md);
+        padding-left: var(--space-md);
+    }
+    
+    .room-title {
+        font-size: 16px;
+    }
+    
+    /* Fix shift tag */
+    .shift-tag {
+        font-size: 11px;
+        padding: 8px 16px;
     }
 }
 
-/* ✅ أصلح مشكلة الـ touch scroll على iOS */
+/* Small mobile devices */
+@media (max-width: 480px) {
+    .app-container {
+        padding: var(--space-sm);
+    }
+    
+    header {
+        padding: var(--space-sm);
+    }
+    
+    .brand-text h1 {
+        font-size: 16px;
+    }
+    
+    .hero-stats {
+        gap: var(--space-xs);
+    }
+    
+    .stat-card {
+        padding: var(--space-sm);
+    }
+    
+    .stat-value {
+        font-size: 20px;
+    }
+    
+    .team-name {
+        font-size: 14px;
+    }
+    
+    .u-email {
+        font-size: 13px;
+    }
+    
+    .u-meta {
+        font-size: 12px;
+    }
+}
+
+/* Touch scrolling for iOS */
 @media (max-width: 768px) {
     .team-content,
     .column,
-    .app-container {
+    .app-container,
+    #contentArea {
         -webkit-overflow-scrolling: touch;
+        overflow-y: auto;
     }
+}
+
+/* Content area */
+#contentArea {
+    overflow-y: auto;
+    min-height: 100vh;
+    padding-bottom: 50px;
+    width: 100%;
+    max-width: 100%;
 }
 
 /* ---- Scrollbar ---- */
