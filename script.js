@@ -20,8 +20,8 @@ const state = {
     // Login state
     currentUser: null,
     usersData: [],
-    isLoggedIn: false
-    usersRefreshInterval: null  // 
+    isLoggedIn: false,              // ✅ تم إضافة الفاصلة هنا
+    usersRefreshInterval: null      // ✅ وتم إضافة الفاصلة هنا كمان
 };
 
 /* ---- Cached DOM Elements ---- */
