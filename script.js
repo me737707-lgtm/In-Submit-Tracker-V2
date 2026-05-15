@@ -28,6 +28,60 @@ const state = {
     cacheTimestamp: 0
 };
 
+/* ---- JSONP Fallback for CORS Issues ---- */
+function fetchJSONP(url) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        const callbackName = 'jsonp_' + Math.random().toString(36).substr(2, 9);
+        const separator = url.includes('?') ? '&' : '?';
+        script.src = url + separator + 'callback=' + callbackName;
+
+        window[callbackName] = (data) => {
+            delete window[callbackName];
+            document.head.removeChild(script);
+            resolve(data);
+        };
+
+        script.onerror = () => {
+            delete window[callbackName];
+            document.head.removeChild(script);
+            reject(new Error('JSONP failed'));
+        };
+
+        script.timeout = 10000;
+        setTimeout(() => {
+            if (window[callbackName]) {
+                delete window[callbackName];
+                if (script.parentNode) document.head.removeChild(script);
+                reject(new Error('JSONP timeout'));
+            }
+        }, 10000);
+
+        document.head.appendChild(script);
+    });
+}
+
+async function fetchWithFallback(url, options = {}) {
+    try {
+        // Try normal fetch first (with CORS mode)
+        const response = await fetch(url, {
+            ...options,
+            mode: 'cors',
+            headers: { ...options.headers, 'Accept': 'application/json' }
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return await response.json();
+    } catch (corsError) {
+        console.warn('CORS fetch failed, trying JSONP fallback...', corsError.message);
+        // Fallback to JSONP
+        try {
+            return await fetchJSONP(url);
+        } catch (jsonpError) {
+            throw new Error(`Both CORS and JSONP failed. ${jsonpError.message}`);
+        }
+    }
+}
+
 /* ---- Cached DOM Elements ---- */
 const elements = {};
 
@@ -37,16 +91,9 @@ const elements = {};
 async function loadLoginUsers(forceRefresh = false) {
     const apiUrl = CONFIG.LOGIN_API_URL + '?action=users';
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-        const response = await fetch(apiUrl, {
-            signal: controller.signal,
-            method: 'GET',
-            headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' }
+        const data = await fetchWithFallback(apiUrl, {
+            headers: { 'Cache-Control': 'no-cache' }
         });
-        clearTimeout(timeoutId);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
         if (data.success && data.users && data.users.length > 0) {
             state.usersData = data.users;
         } else {
@@ -266,18 +313,7 @@ async function fetchData(showLoader = false, isManual = false) {
         state.isLoading = true;
         if (showLoader || isManual) showLoadingState(true);
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT);
-
-        const response = await fetch(fetchUrl, {
-            signal: controller.signal,
-            mode: 'cors',
-            headers: { 'Accept': 'application/json' }
-        });
-        clearTimeout(timeoutId);
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const json = await response.json();
+        const json = await fetchWithFallback(fetchUrl);
         const newData = json.data || {};
 
         if (Object.keys(newData).length === 0) {
@@ -345,18 +381,7 @@ async function fetchShiftSupervisorData(showLoader = false) {
         state.isLoading = true;
         if (showLoader) showLoadingState(true);
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT);
-
-        const response = await fetch(fetchUrl, {
-            signal: controller.signal,
-            mode: 'cors',
-            headers: { 'Accept': 'application/json' }
-        });
-        clearTimeout(timeoutId);
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const json = await response.json();
+        const json = await fetchWithFallback(fetchUrl);
 
         if (json.data) {
             state.rawData = json.data;
@@ -384,17 +409,7 @@ async function fetchSupervisorRoomData(location) {
     const fetchUrl = `${apiUrl}?date=${date}&role=supervisor&location=${encodeURIComponent(location)}`;
 
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT);
-        const response = await fetch(fetchUrl, {
-            signal: controller.signal,
-            mode: 'cors',
-            headers: { 'Accept': 'application/json' }
-        });
-        clearTimeout(timeoutId);
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const json = await response.json();
+        const json = await fetchWithFallback(fetchUrl);
         if (json.data) renderSupervisorView(json.data);
     } catch (error) {
         console.error('Supervisor Fetch Error:', error.message);
@@ -407,17 +422,7 @@ async function fetchQCTeamData(teamName) {
     const fetchUrl = `${apiUrl}?date=${date}&role=qc&username=${encodeURIComponent(teamName)}`;
 
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT);
-        const response = await fetch(fetchUrl, {
-            signal: controller.signal,
-            mode: 'cors',
-            headers: { 'Accept': 'application/json' }
-        });
-        clearTimeout(timeoutId);
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const json = await response.json();
+        const json = await fetchWithFallback(fetchUrl);
         if (json.data) renderQCView(json.data);
     } catch (error) {
         console.error('QC Fetch Error:', error.message);
