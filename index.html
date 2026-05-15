@@ -3,11 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Submit Tracker | Teams Live Dashboard</title>
+    <meta name="description" content="Submit Tracker - Live Operations Dashboard">
+    <meta name="theme-color" content="#0a0e17">
+    <title>Submit Tracker | Live Operations Dashboard</title>
 
-    <!-- Google Fonts -->
+    <!-- Preconnect for Performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+
+    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <!-- Font Awesome Icons -->
@@ -15,6 +20,10 @@
 
     <!-- Application Stylesheet -->
     <link rel="stylesheet" href="style.css">
+
+    <!-- PWA Support -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
 </head>
 <body>
 
@@ -41,6 +50,7 @@
                         required 
                         autocomplete="username"
                         placeholder="Enter your username"
+                        autocapitalize="off"
                     >
                 </div>
                 
@@ -96,6 +106,21 @@
     <div class="silent-update" id="silentUpdate" aria-live="polite">
         <i class="fas fa-sync-alt"></i>
         <span>Data updated</span>
+    </div>
+
+    <!-- ── Breakdown Modal ─────────────────────────────── -->
+    <div class="modal-overlay" id="breakdownModal" style="display: none;">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2 id="modalTitle">Breakdown</h2>
+                <button class="modal-close" onclick="closeBreakdownModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-content" id="modalContent">
+                <!-- Dynamic content will be inserted here -->
+            </div>
+        </div>
     </div>
 
     <!-- ── Main Application Wrapper ────────────────────── -->
@@ -172,8 +197,19 @@
 
     <!-- ── Scripts (defer keeps them non-blocking) ─────── -->
     <!-- config.js must load before script.js so CONFIG is defined -->
-    <script src="config.js"  defer></script>
-    <script src="script.js"  defer></script>
+    <script src="config.js" defer></script>
+    <script src="script.js" defer></script>
+
+    <!-- Service Worker for Offline Support (Optional) -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(() => {
+                    // Silent fail - offline support is optional
+                });
+            });
+        }
+    </script>
 
 </body>
 </html>
