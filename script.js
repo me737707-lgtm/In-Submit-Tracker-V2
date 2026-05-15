@@ -42,28 +42,42 @@ const elements = {};
 /**
  * Load users from API using JSONP (no CORS issues)
  */
+/**
+ * Load users from API using JSONP
+ */
 function loadLoginUsers(forceRefresh = false) {
-    console.log('📥 Fetching users from API (JSONP)...');
+    console.log('📥 Fetching users from API...');
     
-    // أنشئ عنصر script للـ JSONP
-    const script = document.createElement('script');
-    const callbackName = 'handleUsersResponse_' + Date.now();
+    const callbackName = 'usersCallback_' + Date.now();
+    const apiUrl = CONFIG.LOGIN_API_URL + '?action=users&callback=' + callbackName;
     
     // عرّف الـ callback في الـ window
     window[callbackName] = function(data) {
-        console.log('✅ Users fetched successfully:', data);
+        console.log('✅ Users response:', data);
         
-        if (data.success && data.users && data.users.length > 0) {
+        if (data && data.success && data.users && data.users.length > 0) {
             state.usersData = data.users;
-            console.log(`✅ Loaded ${state.usersData.length} users from sheet:`, 
-                       state.usersData.map(u => u.username).join(', '));
-            
-            state.usersLastUpdate = new Date();
+            console.log('✅ Loaded ' + state.usersData.length + ' users');
         } else {
-            console.error('❌ API returned no users - check Login Users sheet');
-            showError('No users found in database. Please contact administrator.');
+            console.error('❌ No users in response');
             state.usersData = [];
         }
+        
+        // امسح الـ callback
+        delete window[callbackName];
+    };
+    
+    // أنشئ الـ script element
+    const script = document.createElement('script');
+    script.src = apiUrl;
+    script.onerror = function() {
+        console.error('❌ Failed to load users script');
+        state.usersData = [];
+        delete window[callbackName];
+    };
+    
+    document.body.appendChild(script);
+}
         
         // امسح الـ script element
         if (script.parentNode) {
