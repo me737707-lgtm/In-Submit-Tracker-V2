@@ -7,6 +7,7 @@
  * - Performance Optimization
  * - Real-time Data (No Demo Mode)
  * - Advanced Filtering & Search
+ * - JSONP Support for CORS-free login
  */
 
 /* ---- Application State ---- */
@@ -35,37 +36,21 @@ const state = {
 const elements = {};
 
 /* ============================================
-   LOGIN FUNCTIONS
+   LOGIN FUNCTIONS (JSONP for CORS-free)
    ============================================ */
 
 /**
- * Load users from API (no demo mode)
+ * Load users from API using JSONP (no CORS issues)
  */
-async function loadLoginUsers(forceRefresh = false) {
-    const apiUrl = CONFIG.LOGIN_API_URL + '?action=users';
+function loadLoginUsers(forceRefresh = false) {
+    console.log('📥 Fetching users from API (JSONP)...');
     
-    try {
-        console.log('📥 Fetching users from API:', apiUrl);
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-        
-        const response = await fetch(apiUrl, {
-            signal: controller.signal,
-            method: 'GET',
-            headers: {
-                'Accept': 'application/json',
-                'Cache-Control': 'no-cache'
-            }
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
+    // أنشئ عنصر script للـ JSONP
+    const script = document.createElement('script');
+    const callbackName = 'handleUsersResponse_' + Date.now();
+    
+    // عرّف الـ callback في الـ window
+    window[callbackName] = function(data) {
         console.log('✅ Users fetched successfully:', data);
         
         if (data.success && data.users && data.users.length > 0) {
@@ -74,18 +59,35 @@ async function loadLoginUsers(forceRefresh = false) {
                        state.usersData.map(u => u.username).join(', '));
             
             state.usersLastUpdate = new Date();
-            
         } else {
             console.error('❌ API returned no users - check Login Users sheet');
             showError('No users found in database. Please contact administrator.');
             state.usersData = [];
         }
         
-    } catch (error) {
-        console.error('❌ Failed to load users from API:', error.message);
+        // امسح الـ script element
+        if (script.parentNode) {
+            script.parentNode.removeChild(script);
+        }
+        delete window[callbackName];
+    };
+    
+    // حدّد الـ URL مع الـ callback
+    const apiUrl = CONFIG.LOGIN_API_URL + '?action=users&callback=' + callbackName;
+    script.src = apiUrl;
+    script.onerror = function() {
+        console.error('❌ Failed to load users from API: Network error');
         showError('Failed to connect to server. Please check your internet connection.');
         state.usersData = [];
-    }
+        
+        if (script.parentNode) {
+            script.parentNode.removeChild(script);
+        }
+        delete window[callbackName];
+    };
+    
+    // أضف الـ script للـ DOM
+    document.body.appendChild(script);
 }
 
 /**
