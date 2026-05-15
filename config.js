@@ -1,5 +1,5 @@
 const CONFIG = {
-    // ✅ استخدم الرابط ده بالظبط
+    // ⚠️ حط الـ URL الجديد هنا
     API_URL: 'https://script.google.com/macros/s/AKfycbxmz0gT1rUXChCW42soPQXYtcpmir9reKAhnP9xKCvWii0adGkA7glu0WbQwVaAIisG/exec',
     LOGIN_API_URL: 'https://script.google.com/macros/s/AKfycbxmz0gT1rUXChCW42soPQXYtcpmir9reKAhnP9xKCvWii0adGkA7glu0WbQwVaAIisG/exec',
 
