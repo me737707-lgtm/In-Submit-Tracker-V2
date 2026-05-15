@@ -3,16 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="description" content="Submit Tracker - Live Operations Dashboard">
-    <meta name="theme-color" content="#0a0e17">
-    <title>Submit Tracker | Live Operations Dashboard</title>
-
-    <!-- Preconnect for Performance -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <title>Submit Tracker | Operations Dashboard</title>
 
     <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <!-- Font Awesome Icons -->
@@ -20,10 +15,7 @@
 
     <!-- Application Stylesheet -->
     <link rel="stylesheet" href="style.css">
-
-    <!-- PWA Support -->
-    <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="icon-192.png">
+<base target="_blank">
 </head>
 <body>
 
@@ -35,50 +27,31 @@
                     <i class="fas fa-chart-line"></i>
                 </div>
                 <h1>Submit Tracker</h1>
-                <p>Live Operations Dashboard</p>
+                <p>Operations Dashboard</p>
             </div>
-            
+
             <form class="login-form" id="loginForm" onsubmit="handleLogin(event)">
                 <div class="login-input-group">
-                    <label for="username">
-                        <i class="fas fa-user"></i> Username
-                    </label>
-                    <input 
-                        type="text" 
-                        id="username" 
-                        name="username" 
-                        required 
-                        autocomplete="username"
-                        placeholder="Enter your username"
-                        autocapitalize="off"
-                    >
+                    <label for="username"><i class="fas fa-user"></i> Username</label>
+                    <input type="text" id="username" name="username" required autocomplete="username" placeholder="Enter your username">
                 </div>
-                
+
                 <div class="login-input-group">
-                    <label for="password">
-                        <i class="fas fa-lock"></i> Password
-                    </label>
-                    <input 
-                        type="password" 
-                        id="password" 
-                        name="password" 
-                        required 
-                        autocomplete="current-password"
-                        placeholder="Enter your password"
-                    >
+                    <label for="password"><i class="fas fa-lock"></i> Password</label>
+                    <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Enter your password">
                 </div>
-                
+
                 <div id="loginError" class="login-error" style="display: none;">
                     <i class="fas fa-exclamation-circle"></i>
                     <span>Invalid username or password</span>
                 </div>
-                
+
                 <button type="submit" class="login-btn" id="loginBtn">
                     <i class="fas fa-sign-in-alt"></i>
                     <span>Login to Dashboard</span>
                 </button>
             </form>
-            
+
             <div class="login-loading" id="loginLoading" style="display: none;">
                 <div class="spinner-ring"></div>
                 <p>Authenticating...</p>
@@ -86,12 +59,12 @@
         </div>
     </div>
 
-    <!-- ── Ambient Background Orbs ─────────────────────── -->
-    <div class="ambient-orb orb-1"></div>
-    <div class="ambient-orb orb-2"></div>
-    <div class="ambient-orb orb-3"></div>
+    <!-- ── Ambient Background (Desktop Only) ───────────── -->
+    <div class="ambient-orb orb-1" id="orb1"></div>
+    <div class="ambient-orb orb-2" id="orb2"></div>
+    <div class="ambient-orb orb-3" id="orb3"></div>
 
-    <!-- ── SVG Gradient Definition (used by progress ring) ─ -->
+    <!-- ── SVG Gradient Definition ─ -->
     <svg style="position: absolute; width: 0; height: 0;" aria-hidden="true">
         <defs>
             <linearGradient id="gradient-progress" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -108,39 +81,22 @@
         <span>Data updated</span>
     </div>
 
-    <!-- ── Breakdown Modal ─────────────────────────────── -->
-    <div class="modal-overlay" id="breakdownModal" style="display: none;">
-        <div class="modal-container">
-            <div class="modal-header">
-                <h2 id="modalTitle">Breakdown</h2>
-                <button class="modal-close" onclick="closeBreakdownModal()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="modal-content" id="modalContent">
-                <!-- Dynamic content will be inserted here -->
-            </div>
-        </div>
-    </div>
-
     <!-- ── Main Application Wrapper ────────────────────── -->
     <div class="app-container">
 
         <!-- Sticky Header -->
         <header id="mainHeader">
             <div class="header-left">
-                <!-- Logo -->
                 <div class="logo-section">
                     <div class="logo-icon" aria-hidden="true">
                         <i class="fas fa-chart-line"></i>
                     </div>
                     <div class="brand-text">
                         <h1>Submit Tracker</h1>
-                        <p>Live Operations Dashboard</p>
+                        <p id="roleDisplay">Operations Dashboard</p>
                     </div>
                 </div>
 
-                <!-- Connection Status Pill -->
                 <div class="status-indicator" id="statusIndicator" role="status" aria-live="polite">
                     <div class="status-dot live-dot" id="statusDot"></div>
                     <span id="statusText">INITIALIZING...</span>
@@ -148,33 +104,21 @@
             </div>
 
             <!-- Filter Controls -->
-            <div class="controls">
+            <div class="controls" id="controlsArea">
                 <div class="search-wrapper">
-                    <input
-                        type="text"
-                        class="search-input"
-                        id="searchInput"
-                        placeholder="Search emails or PC… (Ctrl+K)"
-                        aria-label="Search by email or PC name"
-                        oninput="handleSearch()"
-                    >
+                    <input type="text" class="search-input" id="searchInput" placeholder="Search... (Ctrl+K)" aria-label="Search" oninput="handleSearch()">
                     <i class="fas fa-search search-icon" aria-hidden="true"></i>
                 </div>
 
-                <select id="shiftFilter" aria-label="Filter by shift" onchange="renderData()">
+                <select id="shiftFilter" aria-label="Filter by shift" onchange="handleShiftChange()">
                     <option value="all">All Shifts</option>
                 </select>
 
-                <select id="locFilter" aria-label="Filter by location" onchange="renderData()">
+                <select id="locFilter" aria-label="Filter by location" onchange="handleLocationChange()">
                     <option value="all">All Locations</option>
                 </select>
 
-                <input
-                    type="date"
-                    id="datePicker"
-                    aria-label="Select date"
-                    onchange="manualRefresh()"
-                >
+                <input type="date" id="datePicker" aria-label="Select date" onchange="manualRefresh()">
 
                 <!-- User Info & Logout -->
                 <div class="user-info" id="userInfo" style="display: none;">
@@ -190,26 +134,60 @@
             </div>
         </header>
 
-        <!-- Dynamic Content Area (populated by script.js) -->
+        <!-- ── Shift Supervisor View ─────────────────────── -->
+        <div id="shiftSupervisorView" class="role-view" style="display: none;">
+            <div class="ss-header">
+                <div class="ss-shift-badge" id="ssShiftBadge">
+                    <i class="fas fa-sun"></i>
+                    <span>Morning Shift</span>
+                </div>
+                <div class="ss-date" id="ssDate"></div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="ss-summary-grid" id="ssSummaryGrid">
+                <!-- Injected by JS -->
+            </div>
+
+            <!-- Breakdown Sections -->
+            <div class="ss-breakdown-container" id="ssBreakdownContainer">
+                <!-- Injected by JS -->
+            </div>
+        </div>
+
+        <!-- ── Supervisor Room Breakdown View ────────────── -->
+        <div id="supervisorView" class="role-view" style="display: none;">
+            <div class="sv-header">
+                <h2 id="svLocationTitle">Room Breakdown</h2>
+                <div class="sv-totals" id="svTotals"></div>
+            </div>
+            <div class="sv-teams-container" id="svTeamsContainer">
+                <!-- Injected by JS -->
+            </div>
+        </div>
+
+        <!-- ── QC Team Breakdown View ────────────────────── -->
+        <div id="qcView" class="role-view" style="display: none;">
+            <div class="qc-header">
+                <h2 id="qcTeamTitle">Team Breakdown</h2>
+                <div class="qc-totals" id="qcTotals"></div>
+            </div>
+            <div class="qc-task-breakdown" id="qcTaskBreakdown">
+                <!-- Injected by JS -->
+            </div>
+            <div class="qc-users-container" id="qcUsersContainer">
+                <!-- Injected by JS -->
+            </div>
+        </div>
+
+        <!-- ── Default Dashboard View ────────────────────── -->
         <main id="contentArea" aria-live="polite"></main>
 
     </div><!-- /.app-container -->
 
-    <!-- ── Scripts (defer keeps them non-blocking) ─────── -->
-    <!-- config.js must load before script.js so CONFIG is defined -->
+    <!-- ── Scripts ─────── -->
     <script src="config.js" defer></script>
     <script src="script.js" defer></script>
-
-    <!-- Service Worker for Offline Support (Optional) -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js').catch(() => {
-                    // Silent fail - offline support is optional
-                });
-            });
-        }
-    </script>
 
 </body>
 </html>
