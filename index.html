@@ -2,153 +2,115 @@
 <html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#1a1a2e">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Submit Tracker | Enterprise Dashboard</title>
-  
-  <!-- Preconnect for Performance -->
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Submit Tracker</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
-  
-  <!-- Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  
-  <!-- Icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  
-  <!-- Styles -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- ── Login Overlay (مهم: الاسم لازم يطابق الـ script.js) ── -->
-  <div class="login-overlay" id="loginOverlay">
-    <div class="login-container">
-      <div class="login-header">
-        <div class="login-logo">
-          <i class="fas fa-chart-line"></i>
+
+<!-- LOGIN -->
+<div id="loginOverlay" class="login-overlay">
+  <div class="login-card">
+    <div class="login-logo"><i class="fas fa-chart-line"></i></div>
+    <h1 class="login-title">Submit Tracker</h1>
+    <p class="login-sub">Live Operations Dashboard</p>
+    <form id="loginForm" onsubmit="handleLogin(event)">
+      <div class="field-group">
+        <label class="field-label">Username</label>
+        <div class="field-wrap"><i class="fas fa-user field-icon"></i>
+          <input type="text" id="username" class="field-input" placeholder="Enter username" required autocomplete="username">
         </div>
-        <h1>Submit Tracker</h1>
-        <p>Live Operations Dashboard</p>
       </div>
-      
-      <form class="login-form" id="loginForm" onsubmit="handleLogin(event)">
-        <div class="login-input-group">
-          <label for="username">
-            <i class="fas fa-user"></i> Username
-          </label>
-          <input type="text" id="username" name="username" required autocomplete="username" placeholder="Enter your username">
+      <div class="field-group">
+        <label class="field-label">Password</label>
+        <div class="field-wrap"><i class="fas fa-lock field-icon"></i>
+          <input type="password" id="password" class="field-input" placeholder="Enter password" required autocomplete="current-password">
         </div>
-        
-        <div class="login-input-group">
-          <label for="password">
-            <i class="fas fa-lock"></i> Password
-          </label>
-          <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Enter your password">
-        </div>
-        
-        <div id="loginError" class="login-error" style="display: none;">
-          <i class="fas fa-exclamation-circle"></i>
-          <span>Invalid username or password</span>
-        </div>
-        
-        <button type="submit" class="login-btn" id="loginBtn">
-          <i class="fas fa-sign-in-alt"></i>
-          <span>Login to Dashboard</span>
-        </button>
-      </form>
-      
-      <div class="login-loading" id="loginLoading" style="display: none;">
-        <div class="spinner-ring"></div>
-        <p>Authenticating...</p>
       </div>
+      <div id="loginError" class="login-error" style="display:none">
+        <i class="fas fa-exclamation-circle"></i><span id="loginErrorMsg">Invalid credentials</span>
+      </div>
+      <button type="submit" id="loginBtn" class="login-btn">
+        <i class="fas fa-arrow-right-to-bracket"></i> Sign In
+      </button>
+    </form>
+    <div id="loginSpinner" class="login-spinner" style="display:none">
+      <div class="spin-ring"></div><span>Authenticating…</span>
     </div>
   </div>
+</div>
 
-  <!-- ── Ambient Background Orbs ── -->
-  <div class="ambient-orb orb-1"></div>
-  <div class="ambient-orb orb-2"></div>
-  <div class="ambient-orb orb-3"></div>
-
-  <!-- ── SVG Gradient for Progress Ring ── -->
-  <svg style="position: absolute; width: 0; height: 0;" aria-hidden="true">
-    <defs>
-      <linearGradient id="gradient-progress" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" stop-color="#a5b4fc"/>
-        <stop offset="50%" stop-color="#6ee7b7"/>
-        <stop offset="100%" stop-color="#6ee7b7"/>
-      </linearGradient>
-    </defs>
-  </svg>
-
-  <!-- ── Silent Update Toast (مهم للـ script.js) ── -->
-  <div class="silent-update" id="silentUpdate" aria-live="polite">
-    <i class="fas fa-sync-alt"></i>
-    <span>Data updated</span>
+<!-- BREAKDOWN PANEL -->
+<div id="panelMask" class="panel-mask" onclick="closePanel()"></div>
+<aside id="sidePanel" class="side-panel">
+  <div class="panel-top">
+    <div>
+      <p id="panelSub" class="panel-sub"></p>
+      <h2 id="panelTitle" class="panel-title">Breakdown</h2>
+    </div>
+    <button class="panel-close-btn" onclick="closePanel()"><i class="fas fa-xmark"></i></button>
   </div>
-
-  <!-- ── Main Application Wrapper ── -->
-  <div class="app-container">
-    <!-- Sticky Header -->
-    <header id="mainHeader">
-      <div class="header-left">
-        <!-- Logo -->
-        <div class="logo-section">
-          <div class="logo-icon" aria-hidden="true">
-            <i class="fas fa-chart-line"></i>
-          </div>
-          <div class="brand-text">
-            <h1>Submit Tracker</h1>
-            <p>Live Operations Dashboard</p>
-          </div>
-        </div>
-        
-        <!-- Connection Status Pill (مهم للـ script.js) -->
-        <div class="status-indicator" id="statusIndicator" role="status" aria-live="polite">
-          <div class="status-dot live-dot" id="statusDot"></div>
-          <span id="statusText">INITIALIZING...</span>
-        </div>
-      </div>
-      
-      <!-- Filter Controls -->
-      <div class="controls">
-        <div class="search-wrapper">
-          <input type="text" class="search-input" id="searchInput" placeholder="Search emails or PC… (Ctrl+K)" aria-label="Search by email or PC name" oninput="handleSearch()">
-          <i class="fas fa-search search-icon" aria-hidden="true"></i>
-        </div>
-        
-        <select id="shiftFilter" aria-label="Filter by shift" onchange="renderData()">
-          <option value="all">All Shifts</option>
-        </select>
-        
-        <select id="locFilter" aria-label="Filter by location" onchange="renderData()">
-          <option value="all">All Locations</option>
-        </select>
-        
-        <input type="date" id="datePicker" aria-label="Select date" onchange="manualRefresh()">
-        
-        <!-- User Info & Logout -->
-        <div class="user-info" id="userInfo" style="display: none;">
-          <div class="user-badge">
-            <i class="fas fa-user-circle"></i>
-            <span id="userNameDisplay"></span>
-            <span class="user-role" id="userRoleDisplay"></span>
-          </div>
-          <button class="logout-btn" onclick="handleLogout()" title="Logout">
-            <i class="fas fa-sign-out-alt"></i>
-          </button>
-        </div>
-      </div>
-    </header>
-
-    <!-- Dynamic Content Area (مهم جداً) -->
-    <main id="contentArea" aria-live="polite"></main>
+  <div id="panelContent" class="panel-content">
+    <div class="panel-spin"><div class="spin-ring"></div></div>
   </div>
+</aside>
 
-  <!-- ── Scripts (الترتيب مهم: config.js قبل script.js) ── -->
-  <script src="config.js" defer></script>
-  <script src="script.js" defer></script>
+<!-- APP -->
+<div id="app" class="app">
+
+  <!-- HEADER -->
+  <header id="appHeader" class="app-header">
+    <div class="header-brand">
+      <div class="brand-mark"><i class="fas fa-chart-line"></i></div>
+      <div>
+        <div class="brand-name">Submit Tracker</div>
+        <div class="brand-tag">Live Operations</div>
+      </div>
+      <div id="statusPill" class="status-pill loading">
+        <span class="status-dot"></span><span id="statusLabel">Connecting</span>
+      </div>
+    </div>
+    <div class="header-controls">
+      <div class="search-box">
+        <i class="fas fa-magnifying-glass"></i>
+        <input id="searchInput" type="text" placeholder="Search email or PC…" oninput="handleSearch()">
+      </div>
+      <select id="shiftFilter" class="ctrl-select" onchange="renderDashboard()">
+        <option value="all">All Shifts</option>
+      </select>
+      <select id="locFilter" class="ctrl-select" onchange="renderDashboard()">
+        <option value="all">All Locations</option>
+      </select>
+      <input id="datePicker" type="date" class="ctrl-date" onchange="manualRefresh()">
+      <div id="userChip" class="user-chip" style="display:none">
+        <div class="user-avatar" id="userAvatar">U</div>
+        <div class="user-meta">
+          <span id="userNameLabel" class="user-name"></span>
+          <span id="userRoleLabel" class="user-role-badge"></span>
+        </div>
+        <button class="logout-btn" onclick="handleLogout()" title="Logout">
+          <i class="fas fa-arrow-right-from-bracket"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- SHIFT SUPERVISOR VIEW (shown instead of main for shiftSupervisor role) -->
+  <div id="ssView" style="display:none"></div>
+
+  <!-- MAIN DASHBOARD -->
+  <main id="mainContent"></main>
+
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"><i class="fas fa-rotate"></i> Updated</div>
+
+<script src="config.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
