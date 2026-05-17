@@ -1,728 +1,759 @@
-/**
- * ============================================
- * SCRIPT.JS — Application Engine (Corrected)
- * Compatible with: index.html + config.js + Code.gs
- * ============================================
- */
+/* ================================================
+   SCRIPT.JS  v2.1  —  Full Feature Engine
+   Depends on config.js loaded first (no defer)
+   ================================================ */
 
-/* ---- Application State ---- */
-const state = {
-  rawData: {},
-  filteredData: {},
-  openTeams: new Set(),
-  searchTerm: '',
-  lastDataHash: '',
-  isFirstLoad: true,
-  isLoading: false,
-  useDemoData: false,
-  lastError: null,
-  currentUser: null,
-  usersData: [],
-  isLoggedIn: false,
-  usersRefreshInterval: null
+/* ── State ─────────────────────────────────────── */
+const S = {
+  raw: {}, filtered: {}, openTeams: new Set(),
+  search: '', lastHash: '', firstLoad: true, loading: false,
+  user: null, users: [], loggedIn: false,
+  _cache: {}, _cacheTs: {}, _timer: null
 };
 
-/* ---- Cached DOM Elements ---- */
-const elements = {};
+/* ── DOM refs (populated after DOMContentLoaded) ─ */
+const D = {};
 
-/* ============================================
-   LOGIN FUNCTIONS
-   ============================================ */
+/* ── Client cache ───────────────────────────────── */
+function cGet(k) {
+  const ttl = CONFIG.CLIENT_CACHE_TTL;
+  const ts  = S._cacheTs[k];
+  if (ts && Date.now()-ts < ttl) return S._cache[k];
+  return null;
+}
+function cSet(k,v){ S._cache[k]=v; S._cacheTs[k]=Date.now(); }
+function cDel(prefix){
+  Object.keys(S._cache).forEach(k=>{
+    if (!prefix||k.startsWith(prefix)){ delete S._cache[k]; delete S._cacheTs[k]; }
+  });
+}
 
-async function loadLoginUsers() {
-  const apiUrl = CONFIG.LOGIN_API_URL + '?action=users';
+/* ── API fetch with cache ───────────────────────── */
+async function api(params, cacheKey) {
+  if (cacheKey) { const h=cGet(cacheKey); if(h) return h; }
+  const url  = CONFIG.API_URL+'?'+new URLSearchParams(params);
+  const ctrl = new AbortController();
+  const tid  = setTimeout(()=>ctrl.abort(), CONFIG.REQUEST_TIMEOUT);
   try {
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' }
-    });
-    
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    
-    const data = await response.json();
-    
-    if (data.success && data.users && data.users.length > 0) {
-      state.usersData = data.users;
-    } else {
-      state.usersData = CONFIG.DEMO_USERS || [];
-    }
-  } catch (error) {
-    console.warn('⚠️ Using demo users (API failed):', error.message);
-    state.usersData = CONFIG.DEMO_USERS || [];
-  }
+    const res  = await fetch(url,{signal:ctrl.signal,mode:'cors'});
+    clearTimeout(tid);
+    if (!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    if (cacheKey) cSet(cacheKey, data);
+    return data;
+  } catch(e){ clearTimeout(tid); throw e; }
 }
 
-function handleLogin(event) {
-  event.preventDefault();
-  
-  const username = document.getElementById('username').value.trim();
-  const password = document.getElementById('password').value.trim();
-  const loginError = document.getElementById('loginError');
-  const loginBtn = document.getElementById('loginBtn');
-  const loginLoading = document.getElementById('loginLoading');
-  
-  // Show loading
-  loginBtn.style.display = 'none';
-  loginLoading.style.display = 'flex';
-  loginError.style.display = 'none';
-  
-  // Find user (case-insensitive)
-  const user = state.usersData.find(u =>
-    u.username.toString().toLowerCase() === username.toLowerCase() &&
-    u.password.toString() === password
+/* ================================================
+   LOGIN
+   ================================================ */
+async function loadUsers() {
+  try {
+    const d = await api({action:'users'},'users_list');
+    if (d.success && d.users?.length) S.users = d.users;
+  } catch(e){ console.warn('Users load failed:',e.message); }
+}
+
+function handleLogin(e) {
+  e.preventDefault();
+  const uname = D.username.value.trim();
+  const pass  = D.password.value.trim();
+  setLoginState('loading');
+
+  if (!S.users.length) { setLoginState('error','Server unavailable — check connection'); return; }
+
+  const found = S.users.find(u =>
+    u.username.toLowerCase()===uname.toLowerCase() && u.password===pass
   );
-  
-  if (user) {
-    // ✅ Login successful
-    state.currentUser = user;
-    state.isLoggedIn = true;
-    
-    // Hide login overlay
-    document.getElementById('loginOverlay').style.display = 'none';
-    
-    // Show user info
-    showUserInfo(user);
-    
-    // Initialize app
-    initializeApp();
-    
-    console.log(`✅ Login: ${user.username} (${user.role})`);
+
+  if (found) {
+    S.user = found; S.loggedIn = true;
+    D.loginOverlay.style.display = 'none';
+    renderUserChip(found);
+    initDashboard();
   } else {
-    // ❌ Login failed
-    loginError.innerHTML = '<i class="fas fa-exclamation-circle"></i><span>Invalid username or password</span>';
-    loginError.style.display = 'flex';
-    loginBtn.style.display = 'flex';
-    loginLoading.style.display = 'none';
+    setLoginState('error','Invalid username or password');
   }
 }
 
-function showUserInfo(user) {
-  const userInfo = document.getElementById('userInfo');
-  const userNameDisplay = document.getElementById('userNameDisplay');
-  const userRoleDisplay = document.getElementById('userRoleDisplay');
-  
-  userNameDisplay.textContent = user.username;
-  userRoleDisplay.textContent = user.role === 'supervisors' ? 'SUPERVISOR' : 'QC';
-  userRoleDisplay.className = 'user-role ' + (user.role === 'supervisors' ? 'supervisor' : 'qc');
-  userInfo.style.display = 'flex';
+function setLoginState(state, msg) {
+  D.loginBtn.style.display    = state==='loading' ? 'none' : 'flex';
+  D.loginSpinner.style.display= state==='loading' ? 'flex' : 'none';
+  D.loginError.style.display  = state==='error'   ? 'flex' : 'none';
+  if (msg) D.loginErrorMsg.textContent = msg;
+}
+
+function renderUserChip(user) {
+  const roleMap   = {supervisors:'Supervisor',shiftSupervisor:'Shift Supervisor',Qc:'QC'};
+  const colorMap  = {supervisors:'chip-sup',shiftSupervisor:'chip-shift',Qc:'chip-qc'};
+  D.userAvatar.textContent  = user.username[0].toUpperCase();
+  D.userNameLabel.textContent = user.username;
+  D.userRoleLabel.textContent = roleMap[user.role]||user.role;
+  D.userRoleLabel.className   = 'user-role-badge '+(colorMap[user.role]||'');
+  D.userChip.style.display    = 'flex';
 }
 
 function handleLogout() {
-  state.currentUser = null;
-  state.isLoggedIn = false;
-  state.rawData = {};
-  state.filteredData = {};
-  
-  if (state.usersRefreshInterval) {
-    clearInterval(state.usersRefreshInterval);
-  }
-  
-  // Reset filters
-  if (elements.shiftFilter) elements.shiftFilter.value = 'all';
-  if (elements.locFilter) elements.locFilter.value = 'all';
-  if (elements.searchInput) elements.searchInput.value = '';
-  state.searchTerm = '';
-  
-  // Hide user info
-  const userInfo = document.getElementById('userInfo');
-  if (userInfo) userInfo.style.display = 'none';
-  
-  // Reset login form
-  document.getElementById('loginLoading').style.display = 'none';
-  document.getElementById('loginBtn').style.display = 'flex';
-  document.getElementById('loginError').style.display = 'none';
-  document.getElementById('username').value = '';
-  document.getElementById('password').value = '';
-  
-  // Show login overlay
-  document.getElementById('loginOverlay').style.display = 'flex';
-  
-  // Clear content
-  if (elements.contentArea) elements.contentArea.innerHTML = '';
+  S.user=null; S.loggedIn=false; S.raw={}; S.filtered={};
+  S.firstLoad=true; cDel();
+  if (S._timer) { clearInterval(S._timer); S._timer=null; }
+  D.userChip.style.display    = 'none';
+  D.loginOverlay.style.display= 'flex';
+  D.loginBtn.style.display    = 'flex';
+  D.loginSpinner.style.display= 'none';
+  D.loginError.style.display  = 'none';
+  D.username.value=''; D.password.value='';
+  D.ssView.style.display     = 'none';
+  D.mainContent.innerHTML    = '';
+  D.mainContent.style.display= 'block';
 }
 
-/* ============================================
-   FILTER DATA BY USER PERMISSIONS
-   ============================================ */
+/* ================================================
+   INIT
+   ================================================ */
+function initDashboard() {
+  setStatus('loading');
+  D.datePicker.value = new Date().toISOString().split('T')[0];
 
-function filterDataByUser(data) {
-  if (!state.currentUser) return data;
-  
-  // Supervisors with "all" see everything
-  if (state.currentUser.role === 'supervisors' && state.currentUser.permission === 'all') {
-    return data;
+  const role = S.user?.role;
+
+  if (role === CONFIG.ROLES.SHIFT_SUPERVISOR) {
+    D.mainContent.style.display = 'none';
+    D.ssView.style.display      = 'block';
+    D.shiftFilter.closest('.ctrl-select') && (D.shiftFilter.style.display='none');
+    D.locFilter.closest('.ctrl-select')   && (D.locFilter.style.display='none');
+    fetchShiftSupervisor(true);
+    S._timer = setInterval(()=>fetchShiftSupervisor(false), CONFIG.REFRESH_INTERVAL);
+  } else {
+    D.mainContent.style.display = 'block';
+    D.ssView.style.display      = 'none';
+    fetchMain(true);
+    S._timer = setInterval(()=>fetchMain(false), CONFIG.REFRESH_INTERVAL);
   }
-  
-  // QC users see only their team
-  if (state.currentUser.role === 'Qc' || state.currentUser.permission === 'only') {
-    const filteredData = {};
-    const userTeamName = state.currentUser.username;
-    
-    for (const [shift, locations] of Object.entries(data)) {
-      filteredData[shift] = {};
-      for (const [location, teams] of Object.entries(locations)) {
-        filteredData[shift][location] = {};
-        for (const [teamName, teamData] of Object.entries(teams)) {
-          const teamBaseName = teamName.replace(/\s*\([A-Z]{1,3}\)\s*$/, '').trim();
-          if (teamBaseName === userTeamName) {
-            filteredData[shift][location][teamName] = teamData;
-          }
-        }
-        if (Object.keys(filteredData[shift][location]).length === 0) {
-          delete filteredData[shift][location];
-        }
-      }
-      if (Object.keys(filteredData[shift]).length === 0) {
-        delete filteredData[shift];
-      }
-    }
-    return filteredData;
-  }
-  
-  return data;
-}
 
-/* ============================================
-   INITIALIZATION
-   ============================================ */
-
-async function initializeApp() {
-  console.log('🚀 Submit Tracker initializing...');
-  
-  // Load users first
-  await loadLoginUsers();
-  
-  // Cache DOM elements
-  elements.contentArea = document.getElementById('contentArea');
-  elements.shiftFilter = document.getElementById('shiftFilter');
-  elements.locFilter = document.getElementById('locFilter');
-  elements.datePicker = document.getElementById('datePicker');
-  elements.searchInput = document.getElementById('searchInput');
-  elements.statusIndicator = document.getElementById('statusIndicator');
-  elements.statusDot = document.getElementById('statusDot');
-  elements.statusText = document.getElementById('statusText');
-  elements.silentUpdate = document.getElementById('silentUpdate');
-  
-  // Set default date
-  elements.datePicker.value = new Date().toISOString().split('T')[0];
-  
-  // Initial status
-  updateStatusIndicator('loading');
-  
-  // Fetch data
-  fetchData(true);
-  
-  // Auto-refresh
-  setInterval(() => fetchData(false), CONFIG.REFRESH_INTERVAL);
-  
-  // Keyboard shortcut: Ctrl+K → search
-  document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-      e.preventDefault();
-      elements.searchInput.focus();
-    }
+  document.addEventListener('keydown', ev=>{
+    if ((ev.ctrlKey||ev.metaKey)&&ev.key==='k'){ ev.preventDefault(); D.searchInput.focus(); }
+    if (ev.key==='Escape') closePanel();
   });
 }
 
-function updateStatusIndicator(status) {
-  const { statusIndicator, statusDot, statusText } = elements;
-  if (!statusIndicator) return;
-  
-  statusIndicator.className = 'status-indicator ' + status;
-  statusDot.className = 'status-dot ' + status + '-dot';
-  
-  const labels = {
-    live: 'LIVE - Connected',
-    demo: 'DEMO MODE',
-    error: 'CONNECTION ERROR',
-    loading: 'CONNECTING...'
-  };
-  statusText.textContent = labels[status] || 'CONNECTING...';
+/* ── Status pill ─────────────────────────────────── */
+function setStatus(s) {
+  D.statusPill.className = 'status-pill '+s;
+  D.statusLabel.textContent = {live:'Live',error:'Error',loading:'Connecting'}[s]||s;
 }
 
-/* ============================================
-   DATA FETCHING
-   ============================================ */
-
-async function fetchData(showLoader = false, isManual = false) {
-  if (state.isLoading && !isManual) return;
-  
-  const apiUrl = CONFIG.API_URL;
-  const date = formatDateForAPI(elements.datePicker.value);
-  const fetchUrl = `${apiUrl}?date=${date}`;
-  
+/* ================================================
+   MAIN DASHBOARD FETCH
+   ================================================ */
+async function fetchMain(showLoader, manual) {
+  if (S.loading && !manual) return;
+  const date = fmtDate(D.datePicker.value);
+  const key  = 'dash_'+date;
   try {
-    state.isLoading = true;
-    if (showLoader || isManual) showLoadingState(true);
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT);
-    
-    const response = await fetch(fetchUrl, {
-      signal: controller.signal,
-      headers: { 'Accept': 'application/json' }
-    });
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    
-    const json = await response.json();
-    const newData = json.data || {};
-    
-    if (Object.keys(newData).length === 0) {
-      state.useDemoData = true;
-      state.rawData = CONFIG.DEMO_DATA;
-      updateStatusIndicator('demo');
-    } else {
-      state.useDemoData = false;
-      state.rawData = newData;
-      updateStatusIndicator('live');
+    S.loading = true;
+    if (showLoader) renderLoader(D.mainContent);
+    const json = await api({date}, key);
+    const data = json.data||{};
+    if (!Object.keys(data).length) {
+      renderEmpty(D.mainContent, 'No data for '+date+'. Check the date or wait for sync.');
+      setStatus('error'); return;
     }
-    
-    // Apply user filtering
-    state.filteredData = filterDataByUser(state.rawData);
-    
-    // Render
-    const newDataHash = generateDataHash(state.filteredData);
-    if (newDataHash !== state.lastDataHash) {
-      state.lastDataHash = newDataHash;
-      if (state.isFirstLoad || isManual) {
-        updateFilters();
-        renderData();
-        state.isFirstLoad = false;
-        if (showLoader || isManual) showLoadingState(false);
-      } else {
-        showSilentUpdate();
-      }
+    S.raw      = data;
+    S.filtered = filterForUser(data);
+    setStatus('live');
+    const hash = makeHash(S.filtered);
+    if (hash!==S.lastHash || showLoader || manual) {
+      S.lastHash = hash;
+      rebuildFilters();
+      renderDashboard();
+      if (!showLoader&&!manual) showToast();
     }
-    
-    state.lastError = null;
-    
-  } catch (error) {
-    console.error('❌ Fetch error:', error.message);
-    state.lastError = error.message;
-    updateStatusIndicator('error');
-    
-    // Fallback to demo
-    if (!state.useDemoData) {
-      state.useDemoData = true;
-      state.rawData = CONFIG.DEMO_DATA;
-      state.filteredData = filterDataByUser(state.rawData);
-      updateFilters();
-      renderData();
-    }
-    
-    if (showLoader || isManual || state.isFirstLoad) {
-      showErrorState('Connection Error', error.message, error);
-      state.isFirstLoad = false;
-    }
-  } finally {
-    state.isLoading = false;
-  }
+    S.firstLoad = false;
+  } catch(e) {
+    setStatus('error');
+    renderError(D.mainContent, e);
+  } finally { S.loading=false; }
 }
 
 function manualRefresh() {
-  fetchData(true, true);
+  cDel('dash_'); cDel('supbr_'); cDel('ss_');
+  const role = S.user?.role;
+  if (role===CONFIG.ROLES.SHIFT_SUPERVISOR) fetchShiftSupervisor(true);
+  else fetchMain(true,true);
 }
 
-/* ============================================
-   STATE DISPLAY HELPERS
-   ============================================ */
+/* ── Permission filter ───────────────────────────── */
+function filterForUser(data) {
+  const u = S.user;
+  if (!u) return data;
+  if (u.role===CONFIG.ROLES.SUPERVISOR) return data;
 
-function showLoadingState(show) {
-  if (!show || !elements.contentArea) return;
-  elements.contentArea.innerHTML = `
-    <div id="loader">
-      <div class="loader-spinner">
-        <div class="spinner-ring"></div>
-        <div class="loader-text">Loading data<span class="loader-dots"><span>.</span><span>.</span><span>.</span></span></div>
+  // QC: show only own team(s)
+  if (u.role===CONFIG.ROLES.QC || u.permission==='only') {
+    const out={};
+    for (const [shift,locs] of Object.entries(data))
+      for (const [loc,teams] of Object.entries(locs))
+        for (const [tn,td] of Object.entries(teams)) {
+          const base = tn.replace(/\s*\([A-Z]{1,3}\)\s*$/,'').trim();
+          if (base===u.username||tn===u.username) {
+            out[shift]          = out[shift]||{};
+            out[shift][loc]     = out[shift][loc]||{};
+            out[shift][loc][tn] = td;
+          }
+        }
+    return out;
+  }
+  return data;
+}
+
+/* ================================================
+   SHIFT SUPERVISOR VIEW
+   ================================================ */
+async function fetchShiftSupervisor(full) {
+  const shift = S.user?.permission;  // permission = "M"|"N"|"ON"
+  const date  = fmtDate(D.datePicker.value);
+  const key   = 'ss_'+shift+'_'+date;
+  if (full) { D.ssView.innerHTML='<div class="ss-skeleton"><div class="spin-ring"></div><p>Loading shift data…</p></div>'; }
+  try {
+    const d = await api({action:'shiftSupervisor',shift,date}, key);
+    if (!d.success) throw new Error(d.error||'Failed');
+    renderSSView(d);
+    setStatus('live');
+  } catch(e) {
+    D.ssView.innerHTML=`<div class="err-simple"><i class="fas fa-triangle-exclamation"></i> ${e.message}</div>`;
+    setStatus('error');
+  }
+}
+
+function renderSSView(d) {
+  const shift      = d.shift;
+  const label      = CONFIG.SHIFT_LABELS[shift]||shift;
+  const pct        = d.totalActive>0 ? Math.round((d.totalSubmitted/d.totalActive)*100) : 0;
+  const pendCount  = d.totalActive - d.totalSubmitted;
+
+  // Room rows for panel
+  const roomRows = Object.entries(d.roomBreakdown||{}).map(([room,r])=>`
+    <div class="br-row">
+      <span class="br-label"><i class="fas fa-door-open"></i>${room}</span>
+      <span class="br-pill pill-blue">${r.total} total</span>
+      <span class="br-pill pill-green">${r.submitted} done</span>
+      <span class="br-pill pill-red">${r.pending} pending</span>
+    </div>`).join('');
+
+  // Task rows for panel
+  const t = d.tasks||{};
+  const taskRows = `
+    <div class="br-section">LIDAR</div>
+    <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${t.LIDAR?.FP||0} tasks</span></div>
+    <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${t.LIDAR?.QA||0} tasks</span></div>
+    <div class="br-section" style="margin-top:12px">Lane Line</div>
+    <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${t.LaneLine?.FP||0} tasks</span></div>
+    <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${t.LaneLine?.QA||0} tasks</span></div>
+    ${Object.keys(t.other||{}).length?`<div class="br-section" style="margin-top:12px">Other</div>`+
+      Object.entries(t.other||{}).map(([k,v])=>`<div class="br-row"><span class="br-label">${k}</span><span class="br-pill pill-yellow">${v}</span></div>`).join(''):''}
+  `;
+
+  // Training badges
+  const trainingHTML = d.totalTraining>0
+    ? `<div class="kpi-extra">${Object.entries(d.trainingByLevel||{}).map(([l,c])=>`<span class="train-badge">${l}: ${c}</span>`).join('')}</div>`
+    : '';
+
+  D.ssView.innerHTML = `
+  <div class="ss-wrap">
+    <div class="ss-header">
+      <div>
+        <div class="ss-shift-tag"><i class="fas fa-clock"></i> ${label} Shift</div>
+        <p class="ss-date-label">${D.datePicker.value}</p>
+      </div>
+      <div class="ss-date-ctrl">
+        <input type="date" value="${D.datePicker.value}" class="ctrl-date"
+               onchange="D.datePicker.value=this.value;cDel('ss_');fetchShiftSupervisor(true)">
       </div>
     </div>
-  `;
-}
 
-function showErrorState(title, message, error) {
-  if (!elements.contentArea) return;
-  elements.contentArea.innerHTML = `
-    <div class="error-state">
-      <div class="error-header">
-        <div class="error-icon"><i class="fas fa-exclamation-triangle"></i></div>
-        <div class="error-title-section">
-          <div class="error-code">⚠</div>
-          <div class="error-title">${title}</div>
-          <div class="error-subtitle">${message}</div>
+    <div class="kpi-grid">
+
+      <div class="kpi-card kpi-clickable" onclick='openPanel("Active Users — Room Breakdown","${label} Shift",${JSON.stringify(roomRows)})'>
+        <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-users"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Total Active Users</div>
+          <div class="kpi-val kpi-val-blue">${d.totalActive}</div>
+        </div>
+        <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
+      </div>
+
+      <div class="kpi-card kpi-clickable" onclick='openPanel("Task Breakdown","${label} Shift",${JSON.stringify(taskRows)})'>
+        <div class="kpi-icon-wrap kpi-green"><i class="fas fa-circle-check"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Total Submitted</div>
+          <div class="kpi-val kpi-val-green">${d.totalSubmitted}</div>
+          <div class="kpi-sub">${t.total} tasks · ${t.uniqueUsers||0} labelers</div>
+        </div>
+        <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-icon-wrap kpi-red"><i class="fas fa-hourglass-half"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Pending</div>
+          <div class="kpi-val kpi-val-red">${pendCount}</div>
         </div>
       </div>
-      <div class="error-message">
-        <strong>Status:</strong> Running in <span style="color:var(--accent-yellow)">DEMO MODE</span><br>
-        You can still explore all features!
+
+      <div class="kpi-card kpi-ring">
+        ${ringHTML(pct)}
       </div>
-      <div class="error-actions">
-        <button class="btn btn-primary" onclick="manualRefresh()">
-          <i class="fas fa-redo"></i> Try Again
-        </button>
-        <button class="btn btn-success" onclick="loadDemoOnly()">
-          <i class="fas fa-eye"></i> Show Demo Dashboard
-        </button>
-      </div>
+
+      ${d.totalTraining>0?`
+      <div class="kpi-card">
+        <div class="kpi-icon-wrap kpi-yellow"><i class="fas fa-graduation-cap"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">In Training</div>
+          <div class="kpi-val kpi-val-yellow">${d.totalTraining}</div>
+          ${trainingHTML}
+        </div>
+      </div>`:''}
+
+      ${d.totalAbsent>0?`
+      <div class="kpi-card">
+        <div class="kpi-icon-wrap kpi-gray"><i class="fas fa-user-xmark"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Absent / Empty</div>
+          <div class="kpi-val kpi-val-gray">${d.totalAbsent}</div>
+        </div>
+      </div>`:''}
+
     </div>
-  `;
+  </div>`;
 }
 
-function loadDemoOnly() {
-  state.useDemoData = true;
-  state.rawData = CONFIG.DEMO_DATA;
-  state.filteredData = filterDataByUser(state.rawData);
-  updateStatusIndicator('demo');
-  updateFilters();
-  renderData();
+function ringHTML(pct) {
+  const r    = 44;
+  const circ = 2*Math.PI*r;
+  const off  = circ - (pct/100)*circ;
+  return `
+  <div class="ring-box">
+    <svg class="ring-svg" viewBox="0 0 100 100">
+      <circle class="ring-track" cx="50" cy="50" r="${r}"/>
+      <circle class="ring-fill" cx="50" cy="50" r="${r}"
+        style="stroke-dasharray:${circ.toFixed(1)};stroke-dashoffset:${off.toFixed(1)}"/>
+    </svg>
+    <div class="ring-center"><span class="ring-pct">${pct}%</span><span class="ring-lbl">Done</span></div>
+  </div>`;
 }
 
-function showSilentUpdate() {
-  if (!elements.silentUpdate) return;
-  elements.silentUpdate.classList.add('show');
-  setTimeout(() => elements.silentUpdate.classList.remove('show'), 2500);
+/* ================================================
+   BREAKDOWN PANEL
+   ================================================ */
+function openPanel(title, sub, htmlContent) {
+  D.panelTitle.textContent   = title;
+  D.panelSub.textContent     = sub||'';
+  D.panelContent.innerHTML   = typeof htmlContent==='string' ? htmlContent
+    : '<div class="panel-spin"><div class="spin-ring"></div></div>';
+  D.sidePanel.classList.add('open');
+  D.panelMask.classList.add('open');
+  document.body.style.overflow='hidden';
 }
 
-/* ============================================
-   UTILITY HELPERS
-   ============================================ */
-
-function formatDateForAPI(dateString) {
-  return dateString.split('-').reverse().join('-');
+function closePanel() {
+  D.sidePanel.classList.remove('open');
+  D.panelMask.classList.remove('open');
+  document.body.style.overflow='';
 }
 
-function generateDataHash(data) {
-  let hash = '';
-  Object.keys(data).forEach(shift => {
-    Object.keys(data[shift]).forEach(loc => {
-      Object.values(data[shift][loc]).forEach(team => {
-        hash += `${team.submitted.length}-${team.notSubmitted.length}`;
-      });
-    });
+/* Supervisor location breakdown */
+async function openSupervisorPanel(locName) {
+  openPanel('Location Breakdown', locName, null);
+  const date = fmtDate(D.datePicker.value);
+  try {
+    const d = await api({action:'supervisorBreakdown',date},'supbr_'+date);
+    if (!d.success) throw new Error(d.error);
+    const loc = (d.locations||{})[locName];
+    if (!loc) { D.panelContent.innerHTML='<p class="br-empty">No data for this location.</p>'; return; }
+    const t = loc.tasks||{};
+    const teamRows = Object.entries(loc.teams||{}).map(([tn,tm])=>`
+      <div class="br-row">
+        <span class="br-label"><i class="fas fa-user-tie"></i>${tn}</span>
+        <span class="br-pill pill-green">${tm.submitted} done</span>
+        <span class="br-pill pill-red">${tm.pending} pending</span>
+      </div>`).join('');
+
+    D.panelContent.innerHTML = `
+      <div class="br-summary-card">
+        <div class="br-summary-row">
+          <span class="brs-label">Total Active</span><span class="brs-val">${loc.total}</span>
+        </div>
+        <div class="br-summary-row">
+          <span class="brs-label">Submitted</span><span class="brs-val c-green">${loc.submitted}</span>
+        </div>
+        <div class="br-summary-row">
+          <span class="brs-label">Pending</span><span class="brs-val c-red">${loc.pending}</span>
+        </div>
+      </div>
+      <div class="br-section" style="margin-top:20px">Teams</div>
+      ${teamRows||'<p class="br-empty">No team data.</p>'}
+      <div class="br-section" style="margin-top:20px">Task Breakdown</div>
+      <div class="br-task-grid">
+        <div class="br-task-card lidar">
+          <div class="brtc-label">LIDAR</div>
+          <div class="brtc-row"><span>First Pass</span><strong>${t.LIDAR?.FP||0}</strong></div>
+          <div class="brtc-row"><span>QA</span><strong>${t.LIDAR?.QA||0}</strong></div>
+          <div class="brtc-total">${(t.LIDAR?.FP||0)+(t.LIDAR?.QA||0)} total</div>
+        </div>
+        <div class="br-task-card laneline">
+          <div class="brtc-label">Lane Line</div>
+          <div class="brtc-row"><span>First Pass</span><strong>${t.LaneLine?.FP||0}</strong></div>
+          <div class="brtc-row"><span>QA</span><strong>${t.LaneLine?.QA||0}</strong></div>
+          <div class="brtc-total">${(t.LaneLine?.FP||0)+(t.LaneLine?.QA||0)} total</div>
+        </div>
+      </div>
+      ${Object.keys(t.other||{}).length?`
+        <div class="br-section" style="margin-top:16px">Other Tasks</div>
+        ${Object.entries(t.other).map(([k,v])=>`<div class="br-row"><span class="br-label">${k}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('')}
+      `:''}`;
+  } catch(e) { D.panelContent.innerHTML=`<div class="err-simple">${e.message}</div>`; }
+}
+
+/* QC task breakdown */
+async function openQcPanel(qtcName) {
+  openPanel('Task Breakdown', qtcName, null);
+  const date = fmtDate(D.datePicker.value);
+  const key  = 'qcbr_'+qtcName.replace(/\s+/g,'_')+'_'+date;
+  try {
+    const d = await api({action:'qcBreakdown',qtcName,date}, key);
+    if (!d.success) throw new Error(d.error);
+    D.panelContent.innerHTML = `
+      <div class="br-summary-card">
+        <div class="br-summary-row">
+          <span class="brs-label">Total Tasks</span><span class="brs-val">${d.totalTasks}</span>
+        </div>
+        <div class="br-summary-row">
+          <span class="brs-label">Unique Labelers</span><span class="brs-val">${d.uniqueLabelers}</span>
+        </div>
+      </div>
+      <div class="br-task-grid" style="margin-top:20px">
+        <div class="br-task-card lidar">
+          <div class="brtc-label">LIDAR</div>
+          <div class="brtc-row"><span>First Pass</span><strong>${d.LIDAR?.FP||0}</strong></div>
+          <div class="brtc-row"><span>QA</span><strong>${d.LIDAR?.QA||0}</strong></div>
+          <div class="brtc-total">${(d.LIDAR?.FP||0)+(d.LIDAR?.QA||0)} total</div>
+        </div>
+        <div class="br-task-card laneline">
+          <div class="brtc-label">Lane Line</div>
+          <div class="brtc-row"><span>First Pass</span><strong>${d.LaneLine?.FP||0}</strong></div>
+          <div class="brtc-row"><span>QA</span><strong>${d.LaneLine?.QA||0}</strong></div>
+          <div class="brtc-total">${(d.LaneLine?.FP||0)+(d.LaneLine?.QA||0)} total</div>
+        </div>
+      </div>
+      ${Object.keys(d.other||{}).length?`
+        <div class="br-section" style="margin-top:16px">Other</div>
+        ${Object.entries(d.other).map(([k,v])=>`<div class="br-row"><span class="br-label">${k}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('')}
+      `:''}`;
+  } catch(e) { D.panelContent.innerHTML=`<div class="err-simple">${e.message}</div>`; }
+}
+
+/* ================================================
+   FILTERS & SEARCH
+   ================================================ */
+function rebuildFilters() {
+  const shifts=new Set(), locs=new Set();
+  const data = S.filtered;
+  Object.keys(data).forEach(s=>{ shifts.add(s); Object.keys(data[s]).forEach(l=>locs.add(l)); });
+  Object.keys(CONFIG.LOCATION_GROUPS).forEach(g=>locs.add(g));
+
+  const curS=D.shiftFilter.value, curL=D.locFilter.value;
+
+  D.shiftFilter.innerHTML='<option value="all">All Shifts</option>';
+  Array.from(shifts).sort().forEach(s=>{
+    const o=document.createElement('option');
+    o.value=s; o.textContent=CONFIG.SHIFT_LABELS[s]||'Shift '+s;
+    if(s===curS) o.selected=true;
+    D.shiftFilter.appendChild(o);
   });
-  return hash;
-}
 
-function escapeHTML(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
-function generateCardID(shift, locName, tlName) {
-  return `card-${shift}-${locName}-${tlName}`.replace(/\s+/g, '-');
-}
-
-/* ============================================
-   FILTER MANAGEMENT
-   ============================================ */
-
-function updateFilters() {
-  const shifts = new Set();
-  const locations = new Set();
-  
-  const dataToUse = (state.filteredData && Object.keys(state.filteredData).length > 0)
-    ? state.filteredData : state.rawData;
-  
-  Object.keys(dataToUse).forEach(shift => {
-    shifts.add(shift);
-    Object.keys(dataToUse[shift]).forEach(loc => locations.add(loc));
+  D.locFilter.innerHTML='<option value="all">All Locations</option>';
+  Object.keys(CONFIG.LOCATION_GROUPS).sort().forEach(g=>{
+    const o=document.createElement('option');
+    o.value=g; o.textContent='📍 '+g; o.style.fontWeight='700';
+    if(g===curL) o.selected=true;
+    D.locFilter.appendChild(o);
   });
-  
-  Object.keys(CONFIG.LOCATION_GROUPS).forEach(groupName => locations.add(groupName));
-  
-  // Rebuild shift filter
-  elements.shiftFilter.innerHTML = '<option value="all">All Shifts</option>';
-  Array.from(shifts).sort().forEach(shift => {
-    const opt = document.createElement('option');
-    opt.value = shift;
-    opt.textContent = `Shift: ${shift}`;
-    elements.shiftFilter.appendChild(opt);
-  });
-  
-  // Rebuild location filter
-  elements.locFilter.innerHTML = '<option value="all">All Locations</option>';
-  Object.keys(CONFIG.LOCATION_GROUPS).sort().forEach(groupName => {
-    const opt = document.createElement('option');
-    opt.value = groupName;
-    opt.textContent = `📍 ${groupName}`;
-    opt.style.fontWeight = 'bold';
-    elements.locFilter.appendChild(opt);
-  });
-  
-  const groupedLocs = new Set(Object.values(CONFIG.LOCATION_GROUPS).flat());
-  Array.from(locations).filter(loc =>
-    !groupedLocs.has(loc) && !Object.keys(CONFIG.LOCATION_GROUPS).includes(loc)
-  ).sort().forEach(loc => {
-    const opt = document.createElement('option');
-    opt.value = loc;
-    opt.textContent = loc;
-    elements.locFilter.appendChild(opt);
+  const grouped=new Set(Object.values(CONFIG.LOCATION_GROUPS).flat());
+  Array.from(locs).filter(l=>!grouped.has(l)&&!CONFIG.LOCATION_GROUPS[l]).sort().forEach(l=>{
+    const o=document.createElement('option');
+    o.value=l; o.textContent=l;
+    if(l===curL) o.selected=true;
+    D.locFilter.appendChild(o);
   });
 }
-
-/* ============================================
-   SEARCH
-   ============================================ */
 
 function handleSearch() {
-  state.searchTerm = elements.searchInput.value.toLowerCase().trim();
-  renderData();
+  S.search = D.searchInput.value.toLowerCase().trim();
+  renderDashboard();
 }
 
-function matchesSearch(email, pc) {
-  if (!state.searchTerm) return true;
-  return email.toLowerCase().includes(state.searchTerm) || String(pc).toLowerCase().includes(state.searchTerm);
+function matches(email, pc) {
+  if (!S.search) return true;
+  return email.toLowerCase().includes(S.search)||String(pc).toLowerCase().includes(S.search);
 }
 
-/* ============================================
-   ACCORDION TOGGLE
-   ============================================ */
+/* ================================================
+   RENDER DASHBOARD
+   ================================================ */
+function renderDashboard() {
+  const selShift = D.shiftFilter.value;
+  const selLoc   = D.locFilter.value;
+  const data     = S.filtered;
+  const isSup    = S.user?.role===CONFIG.ROLES.SUPERVISOR;
+  const isQC     = S.user?.role===CONFIG.ROLES.QC;
 
-function toggleTeam(tlID) {
-  const card = document.getElementById(tlID);
-  if (!card) return;
-  if (card.classList.contains('active')) {
-    card.classList.remove('active');
-    state.openTeams.delete(tlID);
-  } else {
-    card.classList.add('active');
-    state.openTeams.add(tlID);
+  D.mainContent.innerHTML='';
+
+  if (!Object.keys(data).length) {
+    renderEmpty(D.mainContent, isQC ? 'No data found for your team today.' : 'No data available.'); return;
   }
-}
 
-/* ============================================
-   RENDERING
-   ============================================ */
+  let animIdx=0;
+  for (const [shift,locs] of Object.entries(data)) {
+    if (selShift!=='all'&&shift!==selShift) continue;
+    const wrapper=document.createElement('div');
+    wrapper.className='shift-block';
+    wrapper.innerHTML=`<div class="shift-badge"><i class="fas fa-clock"></i>${CONFIG.SHIFT_LABELS[shift]||shift} Shift</div>`;
 
-function renderData() {
-  const selectedShift = elements.shiftFilter.value;
-  const selectedLocation = elements.locFilter.value;
-  const dataToRender = (state.filteredData && Object.keys(state.filteredData).length > 0)
-    ? state.filteredData : state.rawData;
-  
-  if (!elements.contentArea) return;
-  elements.contentArea.innerHTML = '';
-  
-  if (Object.keys(dataToRender).length === 0) {
-    elements.contentArea.innerHTML = `
-      <div class="empty-state" style="padding:80px;text-align:center">
-        <i class="fas fa-inbox" style="font-size:56px;margin-bottom:20px;opacity:0.25"></i>
-        <p>No data available</p>
-      </div>
-    `;
-    return;
-  }
-  
-  const isGroupView = selectedLocation !== 'all' && CONFIG.LOCATION_GROUPS.hasOwnProperty(selectedLocation);
-  let animationIndex = 0;
-  
-  for (const [shift, locations] of Object.entries(dataToRender)) {
-    if (selectedShift !== 'all' && shift !== selectedShift) continue;
-    
-    const shiftWrapper = document.createElement('div');
-    shiftWrapper.innerHTML = `<div class="shift-tag"><i class="fas fa-clock"></i> Shift: ${shift}</div>`;
-    
-    if (isGroupView) {
-      const groupSection = createGroupedSection(selectedLocation, shift, locations, animationIndex);
-      if (groupSection) shiftWrapper.appendChild(groupSection);
-    } else {
-      const rendered = new Set();
-      
-      // Render groups first
-      Object.keys(CONFIG.LOCATION_GROUPS).forEach(groupName => {
-        if (selectedLocation !== 'all' && selectedLocation !== groupName) return;
-        const members = CONFIG.LOCATION_GROUPS[groupName].filter(loc => locations.hasOwnProperty(loc));
-        if (members.length > 0) {
-          animationIndex++;
-          const section = createGroupedSection(groupName, shift, locations, animationIndex, members);
-          shiftWrapper.appendChild(section);
-          members.forEach(loc => rendered.add(loc));
-        }
-      });
-      
-      // Render standalone locations
-      for (const [locName, teams] of Object.entries(locations)) {
-        if (selectedLocation !== 'all' && locName !== selectedLocation) continue;
-        if (rendered.has(locName)) continue;
-        animationIndex++;
-        const section = createLocationSection(locName, teams, shift, animationIndex * 80);
-        shiftWrapper.appendChild(section);
-      }
-    }
-    
-    elements.contentArea.appendChild(shiftWrapper);
-  }
-}
+    const rendered=new Set();
 
-function createGroupedSection(groupName, shift, allLocations, delayIndex, specificRooms = null) {
-  const rooms = specificRooms || CONFIG.LOCATION_GROUPS[groupName];
-  const available = rooms.filter(r => allLocations.hasOwnProperty(r));
-  if (available.length === 0) return null;
-  
-  const section = document.createElement('div');
-  section.className = 'location-section';
-  section.style.animationDelay = `${delayIndex * 80}ms`;
-  
-  let totalSub = 0, totalPend = 0, roomData = {};
-  available.forEach(room => {
-    roomData[room] = allLocations[room];
-    Object.values(allLocations[room]).forEach(team => {
-      totalSub += team.submitted.length;
-      totalPend += team.notSubmitted.length;
+    // Grouped locations first
+    Object.keys(CONFIG.LOCATION_GROUPS).forEach(grp=>{
+      if (selLoc!=='all'&&selLoc!==grp) return;
+      const members=(CONFIG.LOCATION_GROUPS[grp]||[]).filter(r=>locs[r]);
+      if (!members.length) return;
+      wrapper.appendChild(buildGroupSection(grp,shift,locs,members,animIdx++,isSup,isQC));
+      members.forEach(m=>rendered.add(m));
     });
-  });
-  
-  const total = totalSub + totalPend;
-  const pct = total > 0 ? Math.round((totalSub / total) * 100) : 0;
-  
-  let roomsHTML = '';
-  available.forEach((room, idx) => {
-    roomsHTML += `
-      <div class="room-subsection" style="animation-delay:${(delayIndex * 80) + ((idx+1)*100)}ms">
-        <div class="room-title"><i class="fas fa-door-open"></i> ${room}</div>
-        ${createTeamsGrid(allLocations[room], shift, room, idx)}
-      </div>
-    `;
-  });
-  
-  section.innerHTML = `
-    <div class="location-title">
-      <div class="location-icon"><i class="fas fa-building"></i></div>
-      ${groupName}
-      ${state.useDemoData ? '<span class="demo-badge">DEMO</span>' : ''}
-      <span style="font-size:14px;color:var(--text-muted)">(${available.length} rooms)</span>
-    </div>
-    ${createHeroStats({ submitted: totalSub, notSubmitted: totalPend, total, percentage: pct })}
-    <div class="room-group">${roomsHTML}</div>
-  `;
-  return section;
-}
 
-function createLocationSection(locName, teams, shift, delay) {
-  const section = document.createElement('div');
-  section.className = 'location-section';
-  section.style.animationDelay = `${delay}ms`;
-  
-  const stats = calculateStats(teams);
-  
-  section.innerHTML = `
-    <div class="location-title">
-      <div class="location-icon"><i class="fas fa-map-marker-alt"></i></div>
-      ${locName}
-      ${state.useDemoData ? '<span class="demo-badge">DEMO</span>' : ''}
-    </div>
-    ${createHeroStats(stats)}
-    ${createTeamsGrid(teams, shift, locName)}
-  `;
-  return section;
-}
-
-function calculateStats(teams) {
-  let sub = 0, pend = 0;
-  Object.values(teams).forEach(team => {
-    sub += team.submitted.length;
-    pend += team.notSubmitted.length;
-  });
-  const total = sub + pend;
-  return {
-    submitted: sub,
-    notSubmitted: pend,
-    total,
-    percentage: total > 0 ? Math.round((sub / total) * 100) : 0
-  };
-}
-
-function createHeroStats(stats) {
-  const r = 54, c = 2 * Math.PI * r;
-  const offset = c - (stats.percentage / 100) * c;
-  
-  return `
-    <div class="hero-stats">
-      <div class="stat-card submitted"><div class="stat-icon"><i class="fas fa-check-circle"></i></div><div class="stat-info"><span class="stat-label">Submitted</span><span class="stat-value">${stats.submitted}</span></div></div>
-      <div class="stat-card not-submitted"><div class="stat-icon"><i class="fas fa-exclamation-circle"></i></div><div class="stat-info"><span class="stat-label">Pending</span><span class="stat-value">${stats.notSubmitted}</span></div></div>
-      <div class="stat-card total"><div class="stat-icon"><i class="fas fa-users"></i></div><div class="stat-info"><span class="stat-label">Total</span><span class="stat-value">${stats.total}</span></div></div>
-      <div class="progress-ring-container">
-        <div class="ring-wrapper">
-          <svg class="progress-ring-svg" viewBox="0 0 120 120">
-            <circle class="ring-bg" cx="60" cy="60" r="${r}"/>
-            <circle class="ring-progress" cx="60" cy="60" r="${r}" style="stroke-dashoffset:${offset}"/>
-          </svg>
-          <div class="ring-center"><div class="ring-percentage">${stats.percentage}%</div><div class="ring-label">Complete</div></div>
-        </div>
-        <div class="ring-details">
-          <div class="detail-row"><span class="detail-dot done"></span><span>${stats.submitted} Done</span></div>
-          <div class="detail-row"><span class="detail-dot pending"></span><span>${stats.notSubmitted} Remaining</span></div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function createTeamsGrid(teams, shift, locName, roomIdx = 0) {
-  let html = '<div class="teams-grid">';
-  let cardIdx = 0;
-  
-  for (const [tlName, teamData] of Object.entries(teams)) {
-    const tlID = generateCardID(shift, locName, tlName);
-    const active = state.openTeams.has(tlID) ? 'active' : '';
-    
-    const filteredPend = teamData.notSubmitted.filter(u => matchesSearch(u.email, u.pc));
-    const filteredSub = teamData.submitted.filter(u => matchesSearch(u.email, u.pc));
-    
-    if (state.searchTerm && filteredPend.length === 0 && filteredSub.length === 0) continue;
-    
-    cardIdx++;
-    const delay = (roomIdx + 1) * 60 + cardIdx * 60;
-    
-    html += `
-      <div class="team-card ${active}" id="${tlID}" style="animation-delay:${delay}ms">
-        <div class="team-header" onclick="toggleTeam('${tlID}')">
-          <div class="tl-info">
-            <span class="team-name"><i class="fas fa-user-tie"></i> ${tlName}</span>
-            <div class="tl-badge-container">
-              <span class="badge badge-done"><span class="badge-dot"></span>Done: ${filteredSub.length}</span>
-              <span class="badge badge-not"><span class="badge-dot"></span>Pending: ${filteredPend.length}</span>
-            </div>
-          </div>
-          <div class="chevron-icon"><i class="fas fa-chevron-down"></i></div>
-        </div>
-        <div class="team-content">
-          <div class="content-inner">
-            <div class="split-view">
-              <div class="column">
-                <div class="col-title not-submit"><i class="fas fa-clock"></i>Pending<span class="col-count">${filteredPend.length}</span></div>
-                ${filteredPend.length > 0 ? filteredPend.map((u,i) => createUserBox(u,'not-sub',i)).join('') : '<div class="empty-state">No pending</div>'}
-              </div>
-              <div class="column">
-                <div class="col-title submit"><i class="fas fa-check-double"></i>Submitted<span class="col-count">${filteredSub.length}</span></div>
-                ${filteredSub.length > 0 ? filteredSub.map((u,i) => createUserBox(u,'sub',i)).join('') : '<div class="empty-state">No submissions</div>'}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
+    // Standalone locations
+    for (const [loc,teams] of Object.entries(locs)) {
+      if (selLoc!=='all'&&selLoc!==loc) continue;
+      if (rendered.has(loc)) continue;
+      wrapper.appendChild(buildLocSection(loc,teams,shift,animIdx++,isSup,isQC));
+    }
+    D.mainContent.appendChild(wrapper);
   }
-  html += '</div>';
-  return html;
 }
 
-function createUserBox(user, type, index) {
-  return `
-    <div class="user-box ${type}-box" style="animation-delay:${index * 40}ms">
-      <span class="u-email">${escapeHTML(user.email)}</span>
-      <span class="u-meta"><i class="fas fa-desktop"></i>PC: ${escapeHTML(user.pc)}</span>
+/* Group (e.g. Saint Fatima) */
+function buildGroupSection(grpName,shift,allLocs,members,idx,isSup,isQC) {
+  let totSub=0,totPend=0;
+  const roomData={};
+  members.forEach(r=>{ roomData[r]=allLocs[r];
+    Object.values(allLocs[r]).forEach(t=>{ totSub+=t.submitted.length; totPend+=t.notSubmitted.length; }); });
+  const total=totSub+totPend, pct=total?Math.round((totSub/total)*100):0;
+
+  const sec=document.createElement('div');
+  sec.className='loc-section'; sec.style.animationDelay=(idx*CONFIG.ANIMATION_STAGGER_DELAY)+'ms';
+
+  sec.innerHTML=`
+    <div class="loc-header">
+      <div class="loc-icon-wrap"><i class="fas fa-building"></i></div>
+      <div class="loc-title-wrap">
+        <h2 class="loc-name">${grpName}</h2>
+        <span class="loc-sub">${members.length} rooms</span>
+      </div>
     </div>
-  `;
+    ${heroStats(totSub,totPend,total,pct)}`;
+
+  const roomsWrap=document.createElement('div');
+  roomsWrap.className='rooms-wrap';
+  members.forEach((r,i)=>{
+    const sub=document.createElement('div');
+    sub.className='room-block';
+    sub.innerHTML=`<div class="room-header ${isSup?'clickable':''}" ${isSup?`onclick="openSupervisorPanel('${esc(r)}')"`:''}>
+      <i class="fas fa-door-open"></i><span>${r}</span>
+      ${isSup?'<i class="fas fa-chart-bar room-bd-ic"></i>':''}
+    </div>`;
+    sub.appendChild(buildTeamsGrid(roomData[r],shift,r,i,isSup,isQC));
+    roomsWrap.appendChild(sub);
+  });
+  sec.appendChild(roomsWrap);
+  return sec;
 }
 
-/* ============================================
-   BOOT
-   ============================================ */
+/* Individual location */
+function buildLocSection(loc,teams,shift,idx,isSup,isQC) {
+  let s=0,n=0;
+  Object.values(teams).forEach(t=>{ s+=t.submitted.length; n+=t.notSubmitted.length; });
+  const total=s+n, pct=total?Math.round((s/total)*100):0;
 
-window.addEventListener('DOMContentLoaded', () => {
-  loadLoginUsers();
+  const sec=document.createElement('div');
+  sec.className='loc-section'; sec.style.animationDelay=(idx*CONFIG.ANIMATION_STAGGER_DELAY)+'ms';
+  sec.innerHTML=`
+    <div class="loc-header ${isSup?'clickable':''}" ${isSup?`onclick="openSupervisorPanel('${esc(loc)}')"`:''}>
+      <div class="loc-icon-wrap"><i class="fas fa-map-marker-alt"></i></div>
+      <div class="loc-title-wrap">
+        <h2 class="loc-name">${loc}</h2>
+        ${isSup?'<span class="loc-bd-hint"><i class="fas fa-chart-bar"></i> View Breakdown</span>':''}
+      </div>
+    </div>
+    ${heroStats(s,n,total,pct)}`;
+  sec.appendChild(buildTeamsGrid(teams,shift,loc,0,isSup,isQC));
+  return sec;
+}
+
+/* Hero stats bar */
+function heroStats(sub,pend,total,pct) {
+  const r=40, circ=(2*Math.PI*r).toFixed(1), off=(circ-(pct/100)*circ).toFixed(1);
+  return `
+  <div class="hero-row">
+    <div class="hero-card hc-green">
+      <div class="hc-icon"><i class="fas fa-circle-check"></i></div>
+      <div class="hc-body"><div class="hc-label">Submitted</div><div class="hc-val">${sub}</div></div>
+    </div>
+    <div class="hero-card hc-red">
+      <div class="hc-icon"><i class="fas fa-circle-exclamation"></i></div>
+      <div class="hc-body"><div class="hc-label">Pending</div><div class="hc-val">${pend}</div></div>
+    </div>
+    <div class="hero-card hc-blue">
+      <div class="hc-icon"><i class="fas fa-users"></i></div>
+      <div class="hc-body"><div class="hc-label">Total</div><div class="hc-val">${total}</div></div>
+    </div>
+    <div class="hero-ring">
+      <div class="ring-box">
+        <svg class="ring-svg" viewBox="0 0 100 100">
+          <circle class="ring-track" cx="50" cy="50" r="${r}"/>
+          <circle class="ring-fill" cx="50" cy="50" r="${r}"
+            style="stroke-dasharray:${circ};stroke-dashoffset:${off}"/>
+        </svg>
+        <div class="ring-center"><span class="ring-pct">${pct}%</span><span class="ring-lbl">Done</span></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* Teams grid */
+function buildTeamsGrid(teams,shift,loc,roomIdx,isSup,isQC) {
+  const grid=document.createElement('div');
+  grid.className='teams-grid';
+  let cardIdx=0;
+  for (const [tl,td] of Object.entries(teams)) {
+    const id  = ('tc-'+shift+'-'+loc+'-'+tl).replace(/\s+/g,'-');
+    const fSub  = td.submitted.filter(u=>matches(u.email,u.pc));
+    const fPend = td.notSubmitted.filter(u=>matches(u.email,u.pc));
+    if (S.search&&!fSub.length&&!fPend.length) continue;
+    const isOpen=S.openTeams.has(id)?'open':'';
+    const delay =(roomIdx+1)*50+(++cardIdx)*50;
+    const bdBtn = isQC
+      ? `<button class="tl-bd-btn" onclick="event.stopPropagation();openQcPanel('${esc(tl)}')" title="Task breakdown"><i class="fas fa-chart-bar"></i></button>`
+      : isSup
+      ? `<button class="tl-bd-btn" onclick="event.stopPropagation();openSupervisorPanel('${esc(loc)}')" title="Location breakdown"><i class="fas fa-chart-bar"></i></button>`
+      : '';
+
+    const card=document.createElement('div');
+    card.className=`team-card ${isOpen}`; card.id=id; card.style.animationDelay=delay+'ms';
+    card.innerHTML=`
+      <div class="team-head" onclick="toggleTeam('${id}')">
+        <div class="tl-info">
+          <div class="tl-name"><i class="fas fa-user-tie"></i>${tl} ${bdBtn}</div>
+          <div class="tl-badges">
+            <span class="tbadge tbadge-green"><i class="fas fa-check"></i>${fSub.length} done</span>
+            <span class="tbadge tbadge-red"><i class="fas fa-clock"></i>${fPend.length} pending</span>
+          </div>
+        </div>
+        <div class="chevron ${isOpen}"><i class="fas fa-chevron-down"></i></div>
+      </div>
+      <div class="team-body">
+        <div class="split-cols">
+          <div class="col-wrap">
+            <div class="col-head pending-head"><i class="fas fa-clock"></i>Pending<span class="col-cnt">${fPend.length}</span></div>
+            ${fPend.length ? fPend.map((u,i)=>userCard(u,'pend',i)).join('') : '<div class="col-empty">All clear ✓</div>'}
+          </div>
+          <div class="col-wrap">
+            <div class="col-head done-head"><i class="fas fa-check-double"></i>Submitted<span class="col-cnt">${fSub.length}</span></div>
+            ${fSub.length ? fSub.map((u,i)=>userCard(u,'done',i)).join('') : '<div class="col-empty">None yet</div>'}
+          </div>
+        </div>
+      </div>`;
+    grid.appendChild(card);
+  }
+  return grid;
+}
+
+function toggleTeam(id) {
+  const c=document.getElementById(id); if(!c) return;
+  c.classList.toggle('open');
+  c.querySelector('.chevron')?.classList.toggle('open');
+  if (c.classList.contains('open')) S.openTeams.add(id); else S.openTeams.delete(id);
+}
+
+function userCard(u,type,idx) {
+  return `<div class="user-card uc-${type}" style="animation-delay:${idx*30}ms">
+    <div class="uc-email">${esc(u.email)}</div>
+    <div class="uc-pc"><i class="fas fa-desktop"></i>${esc(u.pc)}</div>
+  </div>`;
+}
+
+/* ================================================
+   STATE RENDERERS
+   ================================================ */
+function renderLoader(el) {
+  el.innerHTML=`<div class="page-loader"><div class="spin-ring"></div><p>Loading data…</p></div>`;
+}
+function renderEmpty(el,msg) {
+  el.innerHTML=`<div class="page-empty"><i class="fas fa-inbox"></i><p>${msg}</p>
+    <button class="retry-btn" onclick="manualRefresh()"><i class="fas fa-rotate"></i> Retry</button></div>`;
+}
+function renderError(el,e) {
+  const msg=e.name==='AbortError'?'Request timed out. Try again.':e.message||'Connection error';
+  el.innerHTML=`<div class="page-error"><i class="fas fa-triangle-exclamation"></i>
+    <h3>Connection Error</h3><p>${msg}</p>
+    <button class="retry-btn" onclick="manualRefresh()"><i class="fas fa-rotate"></i> Try Again</button></div>`;
+}
+
+function showToast() {
+  D.toast.classList.add('show');
+  setTimeout(()=>D.toast.classList.remove('show'),2000);
+}
+
+/* ================================================
+   UTILITIES
+   ================================================ */
+function fmtDate(s){ return s.split('-').reverse().join('-'); }
+function makeHash(d){ let h=''; Object.values(d).forEach(l=>Object.values(l).forEach(t=>Object.values(t).forEach(tm=>h+=tm.submitted.length+'-'+tm.notSubmitted.length))); return h; }
+function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+/* ================================================
+   BOOT
+   ================================================ */
+document.addEventListener('DOMContentLoaded', async ()=>{
+  // Cache all DOM refs
+  Object.assign(D,{
+    loginOverlay:  document.getElementById('loginOverlay'),
+    loginForm:     document.getElementById('loginForm'),
+    loginBtn:      document.getElementById('loginBtn'),
+    loginSpinner:  document.getElementById('loginSpinner'),
+    loginError:    document.getElementById('loginError'),
+    loginErrorMsg: document.getElementById('loginErrorMsg'),
+    username:      document.getElementById('username'),
+    password:      document.getElementById('password'),
+    statusPill:    document.getElementById('statusPill'),
+    statusLabel:   document.getElementById('statusLabel'),
+    userChip:      document.getElementById('userChip'),
+    userAvatar:    document.getElementById('userAvatar'),
+    userNameLabel: document.getElementById('userNameLabel'),
+    userRoleLabel: document.getElementById('userRoleLabel'),
+    searchInput:   document.getElementById('searchInput'),
+    shiftFilter:   document.getElementById('shiftFilter'),
+    locFilter:     document.getElementById('locFilter'),
+    datePicker:    document.getElementById('datePicker'),
+    mainContent:   document.getElementById('mainContent'),
+    ssView:        document.getElementById('ssView'),
+    panelMask:     document.getElementById('panelMask'),
+    sidePanel:     document.getElementById('sidePanel'),
+    panelTitle:    document.getElementById('panelTitle'),
+    panelSub:      document.getElementById('panelSub'),
+    panelContent:  document.getElementById('panelContent'),
+    toast:         document.getElementById('toast'),
+  });
+
+  await loadUsers();
 });
