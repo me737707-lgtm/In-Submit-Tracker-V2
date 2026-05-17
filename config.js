@@ -7,7 +7,7 @@
 
 const CONFIG = {
   // API Configuration
-  API_URL: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbxmz0gT1rUXChCW42soPQXYtcpmir9reKAhnP9xKCvWii0adGkA7glu0WbQwVaAIisG/exec',
   
   // Performance Settings
   CACHE_TTL: 30000,              // 30 seconds
