@@ -1,45 +1,25 @@
 /**
  * ============================================
- * CONFIG.JS  v2.0  —  No Demo Mode
+ * CONFIG.JS - Production Configuration
+ * Enterprise-Grade Settings
  * ============================================
  */
 
 const CONFIG = {
-
-  // ─── API ────────────────────────────────────────────────────
-  API_URL: 'https://script.google.com/macros/s/AKfycbxmz0gT1rUXChCW42soPQXYtcpmir9reKAhnP9xKCvWii0adGkA7glu0WbQwVaAIisG/exec',
-
-  // ─── Timing ─────────────────────────────────────────────────
-  REFRESH_INTERVAL:       30000,   // 30 s  — dashboard auto-refresh
-  REQUEST_TIMEOUT:        15000,   // 15 s  — abort slow requests
-  ANIMATION_STAGGER_DELAY: 60,     // ms between card animations
-
-  // ─── Client-side cache TTL (ms) ─────────────────────────────
-  CLIENT_CACHE_TTL: 25000,         // 25 s  — matches server cache
-
-  // ─── Roles ───────────────────────────────────────────────────
-  // Add / remove users directly in the "Login Users" sheet.
-  // Columns:  A=username  B=password  C=role  D=permission
-  //
-  // role values recognised by the frontend:
-  //   supervisors       → sees everything (all shifts, all locations)
-  //   shiftSupervisor   → sees own shift only (M / N / ON)
-  //   Qc                → sees own team only
-  //
-  // permission values:
-  //   all               → full view for that role
-  //   only              → restricted view (Qc default)
-  //
-  // ⚠️  Do NOT keep passwords here — use the Google Sheet.
-  //     The array below is ONLY a reference for the role strings.
-  ROLES: {
-    SUPERVISOR:       'supervisors',
-    SHIFT_SUPERVISOR: 'shiftSupervisor',
-    QC:               'Qc'
-  },
-
-  // ─── Location Groups ─────────────────────────────────────────
-  // Rooms that should be visually grouped under one header
+  // API Configuration
+  API_URL: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec',
+  
+  // Performance Settings
+  CACHE_TTL: 30000,              // 30 seconds
+  REQUEST_TIMEOUT: 15000,         // 15 seconds
+  REFRESH_INTERVAL: 30000,        // 30 seconds auto-refresh
+  DEBOUNCE_DELAY: 300,            // 300ms for search
+  
+  // UI Settings
+  ANIMATION_STAGGER_DELAY: 50,    // Faster animations
+  VIRTUAL_SCROLL_THRESHOLD: 50,   // Enable virtual scroll for >50 items
+  
+  // Location Grouping
   LOCATION_GROUPS: {
     'Saint Fatima': [
       'SF Floor 4 Room 1',
@@ -51,14 +31,55 @@ const CONFIG = {
       'SF Floor 4 Room 9',
       'SF Floor 4 Room 12',
       'SF Floor 4 Room 13'
+    ],
+    'NC Units': [
+      'NC Unit 102',
+      'NC Unit 106',
+      'NC Unit 108'
     ]
   },
-
-  // ─── Shift labels ────────────────────────────────────────────
-  SHIFT_LABELS: {
-    'M':  'Morning',
-    'N':  'Night',
-    'ON': 'Overnight'
+  
+  // Role Definitions
+  ROLES: {
+    ADMIN: {
+      name: 'Administrator',
+      level: 100,
+      permissions: ['all']
+    },
+    SHIFT_SUPERVISOR: {
+      name: 'Shift Supervisor',
+      level: 75,
+      permissions: ['view_shift', 'view_metrics', 'view_breakdown']
+    },
+    SUPERVISOR: {
+      name: 'Supervisor',
+      level: 50,
+      permissions: ['view_rooms', 'view_submissions']
+    },
+    QC: {
+      name: 'Quality Controller',
+      level: 25,
+      permissions: ['view_team']
+    }
+  },
+  
+  // Shifts
+  SHIFTS: ['M', 'N', 'ON'],
+  
+  // Feature Flags
+  FEATURES: {
+    ENABLE_AUTO_REFRESH: true,
+    ENABLE_OFFLINE_MODE: false,
+    ENABLE_ANALYTICS: true,
+    ENABLE_NOTIFICATIONS: true
   }
-
 };
+
+// Service Worker Registration (for future PWA support)
+if ('serviceWorker' in navigator && CONFIG.FEATURES.ENABLE_OFFLINE_MODE) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // Silent fail - offline mode is optional
+    });
+  });
+}
