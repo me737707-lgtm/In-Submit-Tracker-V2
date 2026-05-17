@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Submit Tracker | Operations Dashboard</title>
+    <title>Submit Tracker V3.0 | Teams Live Dashboard</title>
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -15,7 +15,6 @@
 
     <!-- Application Stylesheet -->
     <link rel="stylesheet" href="style.css">
-<base target="_blank">
 </head>
 <body>
 
@@ -27,31 +26,49 @@
                     <i class="fas fa-chart-line"></i>
                 </div>
                 <h1>Submit Tracker</h1>
-                <p>Operations Dashboard</p>
+                <p>Live Operations Dashboard V3.0</p>
             </div>
-
+            
             <form class="login-form" id="loginForm" onsubmit="handleLogin(event)">
                 <div class="login-input-group">
-                    <label for="username"><i class="fas fa-user"></i> Username</label>
-                    <input type="text" id="username" name="username" required autocomplete="username" placeholder="Enter your username">
+                    <label for="username">
+                        <i class="fas fa-user"></i> Username
+                    </label>
+                    <input 
+                        type="text" 
+                        id="username" 
+                        name="username" 
+                        required 
+                        autocomplete="username"
+                        placeholder="Enter your username"
+                    >
                 </div>
-
+                
                 <div class="login-input-group">
-                    <label for="password"><i class="fas fa-lock"></i> Password</label>
-                    <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Enter your password">
+                    <label for="password">
+                        <i class="fas fa-lock"></i> Password
+                    </label>
+                    <input 
+                        type="password" 
+                        id="password" 
+                        name="password" 
+                        required 
+                        autocomplete="current-password"
+                        placeholder="Enter your password"
+                    >
                 </div>
-
+                
                 <div id="loginError" class="login-error" style="display: none;">
                     <i class="fas fa-exclamation-circle"></i>
                     <span>Invalid username or password</span>
                 </div>
-
+                
                 <button type="submit" class="login-btn" id="loginBtn">
                     <i class="fas fa-sign-in-alt"></i>
                     <span>Login to Dashboard</span>
                 </button>
             </form>
-
+            
             <div class="login-loading" id="loginLoading" style="display: none;">
                 <div class="spinner-ring"></div>
                 <p>Authenticating...</p>
@@ -59,10 +76,10 @@
         </div>
     </div>
 
-    <!-- ── Ambient Background (Desktop Only) ───────────── -->
-    <div class="ambient-orb orb-1" id="orb1"></div>
-    <div class="ambient-orb orb-2" id="orb2"></div>
-    <div class="ambient-orb orb-3" id="orb3"></div>
+    <!-- ── Ambient Background Orbs ─────────────────────── -->
+    <div class="ambient-orb orb-1"></div>
+    <div class="ambient-orb orb-2"></div>
+    <div class="ambient-orb orb-3"></div>
 
     <!-- ── SVG Gradient Definition ─ -->
     <svg style="position: absolute; width: 0; height: 0;" aria-hidden="true">
@@ -81,22 +98,39 @@
         <span>Data updated</span>
     </div>
 
+    <!-- ── ✅ NEW: Breakdown Modal ──────────────────────── -->
+    <div class="modal-overlay" id="breakdownModal" style="display: none;">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2 id="modalTitle">Breakdown Details</h2>
+                <button class="modal-close" onclick="closeModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Dynamic content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
     <!-- ── Main Application Wrapper ────────────────────── -->
     <div class="app-container">
 
         <!-- Sticky Header -->
         <header id="mainHeader">
             <div class="header-left">
+                <!-- Logo -->
                 <div class="logo-section">
                     <div class="logo-icon" aria-hidden="true">
                         <i class="fas fa-chart-line"></i>
                     </div>
                     <div class="brand-text">
                         <h1>Submit Tracker</h1>
-                        <p id="roleDisplay">Operations Dashboard</p>
+                        <p>Live Operations Dashboard V3.0</p>
                     </div>
                 </div>
 
+                <!-- Connection Status Pill -->
                 <div class="status-indicator" id="statusIndicator" role="status" aria-live="polite">
                     <div class="status-dot live-dot" id="statusDot"></div>
                     <span id="statusText">INITIALIZING...</span>
@@ -104,21 +138,33 @@
             </div>
 
             <!-- Filter Controls -->
-            <div class="controls" id="controlsArea">
+            <div class="controls">
                 <div class="search-wrapper">
-                    <input type="text" class="search-input" id="searchInput" placeholder="Search... (Ctrl+K)" aria-label="Search" oninput="handleSearch()">
+                    <input
+                        type="text"
+                        class="search-input"
+                        id="searchInput"
+                        placeholder="Search emails or PC… (Ctrl+K)"
+                        aria-label="Search by email or PC name"
+                        oninput="handleSearch()"
+                    >
                     <i class="fas fa-search search-icon" aria-hidden="true"></i>
                 </div>
 
-                <select id="shiftFilter" aria-label="Filter by shift" onchange="handleShiftChange()">
+                <select id="shiftFilter" aria-label="Filter by shift" onchange="renderData()">
                     <option value="all">All Shifts</option>
                 </select>
 
-                <select id="locFilter" aria-label="Filter by location" onchange="handleLocationChange()">
+                <select id="locFilter" aria-label="Filter by location" onchange="renderData()">
                     <option value="all">All Locations</option>
                 </select>
 
-                <input type="date" id="datePicker" aria-label="Select date" onchange="manualRefresh()">
+                <input
+                    type="date"
+                    id="datePicker"
+                    aria-label="Select date"
+                    onchange="manualRefresh()"
+                >
 
                 <!-- User Info & Logout -->
                 <div class="user-info" id="userInfo" style="display: none;">
@@ -134,58 +180,100 @@
             </div>
         </header>
 
-        <!-- ── Shift Supervisor View ─────────────────────── -->
-        <div id="shiftSupervisorView" class="role-view" style="display: none;">
+        <!-- ✅ NEW: Shift Supervisor Dashboard Section -->
+        <section id="shiftSupervisorDashboard" class="shift-supervisor-section" style="display: none;">
             <div class="ss-header">
-                <div class="ss-shift-badge" id="ssShiftBadge">
-                    <i class="fas fa-sun"></i>
-                    <span>Morning Shift</span>
-                </div>
-                <div class="ss-date" id="ssDate"></div>
+                <h2><i class="fas fa-users-cog"></i> Shift Supervisor Overview</h2>
+                <span class="ss-shift-badge" id="ssShiftBadge">Morning Shift</span>
             </div>
-
-            <!-- Summary Cards -->
+            
+            <!-- Summary Cards Row -->
             <div class="ss-summary-grid" id="ssSummaryGrid">
-                <!-- Injected by JS -->
+                <!-- Total Active Users Card -->
+                <div class="ss-card clickable" onclick="showBreakdown('activeUsers')">
+                    <div class="ss-card-icon active">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="ss-card-content">
+                        <span class="ss-card-value" id="ssTotalActive">0</span>
+                        <span class="ss-card-label">Total Active Users</span>
+                    </div>
+                    <div class="ss-card-arrow">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                </div>
+
+                <!-- Total Submitted Card -->
+                <div class="ss-card clickable submitted" onclick="showBreakdown('submitted')">
+                    <div class="ss-card-icon submitted">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="ss-card-content">
+                        <span class="ss-card-value" id="ssTotalSubmitted">0</span>
+                        <span class="ss-card-label">Total Submitted Tasks</span>
+                    </div>
+                    <div class="ss-card-arrow">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                </div>
+
+                <!-- Total Pending Card -->
+                <div class="ss-card clickable pending" onclick="showBreakdown('pending')">
+                    <div class="ss-card-icon pending">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="ss-card-content">
+                        <span class="ss-card-value" id="ssTotalPending">0</span>
+                        <span class="ss-card-label">Total Pending</span>
+                    </div>
+                    <div class="ss-card-arrow">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                </div>
+
+                <!-- Absent Card -->
+                <div class="ss-card absent">
+                    <div class="ss-card-icon absent">
+                        <i class="fas fa-user-slash"></i>
+                    </div>
+                    <div class="ss-card-content">
+                        <span class="ss-card-value" id="ssTotalAbsent">0</span>
+                        <span class="ss-card-label">Absent / Empty</span>
+                    </div>
+                </div>
             </div>
 
-            <!-- Breakdown Sections -->
-            <div class="ss-breakdown-container" id="ssBreakdownContainer">
-                <!-- Injected by JS -->
+            <!-- Status Breakdown Section -->
+            <div class="ss-breakdown-section">
+                <h3><i class="fas fa-chart-pie"></i> Status Breakdown</h3>
+                <div class="ss-status-grid" id="ssStatusGrid">
+                    <!-- Will be populated dynamically -->
+                </div>
             </div>
-        </div>
 
-        <!-- ── Supervisor Room Breakdown View ────────────── -->
-        <div id="supervisorView" class="role-view" style="display: none;">
-            <div class="sv-header">
-                <h2 id="svLocationTitle">Room Breakdown</h2>
-                <div class="sv-totals" id="svTotals"></div>
+            <!-- Room Breakdown Section -->
+            <div class="ss-breakdown-section">
+                <h3><i class="fas fa-door-open"></i> Room Breakdown</h3>
+                <div class="ss-room-grid" id="ssRoomGrid">
+                    <!-- Will be populated dynamically -->
+                </div>
             </div>
-            <div class="sv-teams-container" id="svTeamsContainer">
-                <!-- Injected by JS -->
-            </div>
-        </div>
 
-        <!-- ── QC Team Breakdown View ────────────────────── -->
-        <div id="qcView" class="role-view" style="display: none;">
-            <div class="qc-header">
-                <h2 id="qcTeamTitle">Team Breakdown</h2>
-                <div class="qc-totals" id="qcTotals"></div>
+            <!-- Task Type Breakdown Section -->
+            <div class="ss-breakdown-section">
+                <h3><i class="fas fa-tasks"></i> Task Type Breakdown</h3>
+                <div class="ss-task-grid" id="ssTaskGrid">
+                    <!-- Will be populated dynamically -->
+                </div>
             </div>
-            <div class="qc-task-breakdown" id="qcTaskBreakdown">
-                <!-- Injected by JS -->
-            </div>
-            <div class="qc-users-container" id="qcUsersContainer">
-                <!-- Injected by JS -->
-            </div>
-        </div>
+        </section>
 
-        <!-- ── Default Dashboard View ────────────────────── -->
+        <!-- Regular Dashboard Content Area -->
         <main id="contentArea" aria-live="polite"></main>
 
     </div><!-- /.app-container -->
 
-    <!-- ── Scripts ─────── -->
+    <!-- Scripts -->
     <script src="config.js" defer></script>
     <script src="script.js" defer></script>
 
