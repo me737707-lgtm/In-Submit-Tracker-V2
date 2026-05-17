@@ -1,929 +1,822 @@
 /**
  * ============================================
- * SCRIPT.JS  v2.0  —  Application Engine
- * No Demo Mode | Client Cache | Role Views
+ * APP.JS - Enterprise Dashboard Application
+ * Optimized for Performance & Scalability
  * ============================================
- * Depends on: config.js  (loaded first via defer)
  */
 
-/* ── State ── */
-const state = {
-  rawData:       {},
-  filteredData:  {},
-  openTeams:     new Set(),
-  searchTerm:    '',
-  lastDataHash:  '',
-  isFirstLoad:   true,
-  isLoading:     false,
-  lastError:     null,
-  currentUser:   null,
-  usersData:     [],
-  isLoggedIn:    false,
-  // client-side cache
-  _cache:        {},
-  _cacheTime:    {}
-};
+const App = {
+  // State Management
+  state: {
+    currentUser: null,
+    rawData: {},
+    filteredData: {},
+    isLoading: false,
+    searchTerm: '',
+    lastUpdate: null,
+    cache: new Map(),
+    refreshInterval: null
+  },
 
-/* ── DOM cache ── */
-const el = {};
+  // DOM Elements Cache
+  elements: {},
 
-/* ══════════════════════════════════════════
-   CLIENT-SIDE CACHE
-══════════════════════════════════════════ */
-function cacheGet(key) {
-  const ttl = CONFIG.CLIENT_CACHE_TTL || 25000;
-  const ts  = state._cacheTime[key];
-  if (ts && (Date.now() - ts) < ttl) return state._cache[key];
-  return null;
-}
-function cacheSet(key, val) {
-  state._cache[key]     = val;
-  state._cacheTime[key] = Date.now();
-}
-function cacheClear(prefix) {
-  Object.keys(state._cache).forEach(k => {
-    if (!prefix || k.startsWith(prefix)) {
-      delete state._cache[k];
-      delete state._cacheTime[k];
+  /**
+   * Initialize Application
+   */
+  async init() {
+    console.log('%c🚀 Initializing Enterprise Dashboard...', 'color: #6ee7b7; font-weight: bold;');
+    
+    // Cache DOM elements
+    this.cacheElements();
+    
+    // Set default date
+    this.elements.datePicker.value = new Date().toISOString().split('T')[0];
+    
+    // Setup keyboard shortcuts
+    this.setupKeyboardShortcuts();
+    
+    // Check for existing session
+    const savedUser = sessionStorage.getItem('currentUser');
+    if (savedUser) {
+      this.state.currentUser = JSON.parse(savedUser);
+      this.showMainApp();
     }
-  });
-}
+    
+    // Hide loader
+    setTimeout(() => {
+      document.getElementById('appLoader').style.opacity = '0';
+      setTimeout(() => {
+        document.getElementById('appLoader').style.display = 'none';
+      }, 300);
+    }, 500);
+  },
 
-/* ══════════════════════════════════════════
-   API HELPERS
-══════════════════════════════════════════ */
-async function apiFetch(params, cacheKey) {
-  if (cacheKey) {
-    const hit = cacheGet(cacheKey);
-    if (hit) return hit;
-  }
+  /**
+   * Cache DOM Elements for Performance
+   */
+  cacheElements() {
+    this.elements = {
+      loginScreen: document.getElementById('loginScreen'),
+      appContainer: document.getElementById('appContainer'),
+      loginForm: document.getElementById('loginForm'),
+      loginError: document.getElementById('loginError'),
+      loginErrorText: document.getElementById('loginErrorText'),
+      loginLoading: document.getElementById('loginLoading'),
+      loginBtn: document.getElementById('loginBtn'),
+      username: document.getElementById('username'),
+      password: document.getElementById('password'),
+      contentArea: document.getElementById('contentArea'),
+      metricsGrid: document.getElementById('metricsGrid'),
+      shiftFilter: document.getElementById('shiftFilter'),
+      locationFilter: document.getElementById('locationFilter'),
+      datePicker: document.getElementById('datePicker'),
+      searchInput: document.getElementById('searchInput'),
+      userNameDisplay: document.getElementById('userNameDisplay'),
+      userRoleDisplay: document.getElementById('userRoleDisplay'),
+      userDropdown: document.getElementById('userDropdown'),
+      sidebar: document.getElementById('sidebar'),
+      adminNav: document.getElementById('adminNav'),
+      dashboardView: document.getElementById('dashboardView'),
+      userManagementView: document.getElementById('userManagementView')
+    };
+  },
 
-  const url = CONFIG.API_URL + '?' + new URLSearchParams(params).toString();
-  const ctrl = new AbortController();
-  const tid  = setTimeout(() => ctrl.abort(), CONFIG.REQUEST_TIMEOUT);
-
-  try {
-    const res  = await fetch(url, { signal: ctrl.signal, mode: 'cors' });
-    clearTimeout(tid);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    if (cacheKey) cacheSet(cacheKey, data);
-    return data;
-  } catch (e) {
-    clearTimeout(tid);
-    throw e;
-  }
-}
-
-/* ══════════════════════════════════════════
-   LOGIN
-══════════════════════════════════════════ */
-async function loadLoginUsers() {
-  try {
-    const data = await apiFetch({ action: 'users' }, 'users_60s');
-    if (data.success && data.users && data.users.length) {
-      state.usersData = data.users;
+  /**
+   * Handle Login
+   */
+  async handleLogin(event) {
+    event.preventDefault();
+    
+    const username = this.elements.username.value.trim();
+    const password = this.elements.password.value.trim();
+    
+    // Show loading state
+    this.elements.loginBtn.style.display = 'none';
+    this.elements.loginLoading.style.display = 'flex';
+    this.elements.loginError.style.display = 'none';
+    
+    try {
+      const response = await this.apiCall('login', { username, password });
+      
+      if (response.success) {
+        this.state.currentUser = response.user;
+        sessionStorage.setItem('currentUser', JSON.stringify(response.user));
+        
+        this.showMainApp();
+        this.showToast('Welcome back, ' + username + '!', 'success');
+      } else {
+        throw new Error(response.error || 'Login failed');
+      }
+    } catch (error) {
+      this.elements.loginErrorText.textContent = error.message;
+      this.elements.loginError.style.display = 'flex';
+      this.elements.loginBtn.style.display = 'flex';
+      this.elements.loginLoading.style.display = 'none';
     }
-  } catch (e) {
-    console.warn('Could not load users from sheet:', e.message);
-  }
-}
+  },
 
-function handleLogin(event) {
-  event.preventDefault();
-  const username   = document.getElementById('username').value.trim();
-  const password   = document.getElementById('password').value.trim();
-  const errDiv     = document.getElementById('loginError');
-  const loginBtn   = document.getElementById('loginBtn');
-  const loginLoad  = document.getElementById('loginLoading');
-
-  loginBtn.style.display  = 'none';
-  loginLoad.style.display = 'flex';
-  errDiv.style.display    = 'none';
-
-  if (!state.usersData.length) {
-    showLoginError(errDiv, loginBtn, loginLoad, 'No users loaded. Check your connection.');
-    return;
-  }
-
-  const user = state.usersData.find(u =>
-    u.username.toLowerCase() === username.toLowerCase() &&
-    u.password === password
-  );
-
-  if (user) {
-    state.currentUser = user;
-    state.isLoggedIn  = true;
-    document.getElementById('loginOverlay').style.display = 'none';
-    showUserBadge(user);
-    initApp();
-  } else {
-    showLoginError(errDiv, loginBtn, loginLoad, 'Invalid username or password');
-  }
-}
-
-function showLoginError(errDiv, loginBtn, loginLoad, msg) {
-  errDiv.innerHTML        = `<i class="fas fa-exclamation-circle"></i><span>${msg}</span>`;
-  errDiv.style.display    = 'flex';
-  loginBtn.style.display  = 'flex';
-  loginLoad.style.display = 'none';
-}
-
-function showUserBadge(user) {
-  const roleMap = {
-    supervisors:      'SUPERVISOR',
-    shiftSupervisor:  'SHIFT SUPERVISOR',
-    Qc:               'QC'
-  };
-  const classMap = {
-    supervisors:      'supervisor',
-    shiftSupervisor:  'shift-supervisor',
-    Qc:               'qc'
-  };
-  document.getElementById('userNameDisplay').textContent = user.username;
-  const roleEl = document.getElementById('userRoleDisplay');
-  roleEl.textContent = roleMap[user.role] || user.role;
-  roleEl.className   = 'user-role ' + (classMap[user.role] || '');
-  document.getElementById('userInfo').style.display = 'flex';
-}
-
-function handleLogout() {
-  state.currentUser  = null;
-  state.isLoggedIn   = false;
-  state.rawData      = {};
-  state.filteredData = {};
-  state.isFirstLoad  = true;
-  cacheClear();
-
-  ['shiftFilter','locFilter','searchInput'].forEach(id => {
-    const e = document.getElementById(id);
-    if (e) e.value = '';
-  });
-  state.searchTerm = '';
-
-  document.getElementById('userInfo').style.display       = 'none';
-  document.getElementById('loginOverlay').style.display   = 'flex';
-  document.getElementById('loginLoading').style.display   = 'none';
-  document.getElementById('loginBtn').style.display       = 'flex';
-  document.getElementById('loginError').style.display     = 'none';
-  document.getElementById('username').value               = '';
-  document.getElementById('password').value               = '';
-  document.getElementById('shiftSupervisorView').style.display = 'none';
-  el.contentArea.innerHTML = '';
-}
-
-/* ══════════════════════════════════════════
-   INIT
-══════════════════════════════════════════ */
-async function initApp() {
-  updateStatus('loading');
-
-  el.contentArea    = document.getElementById('contentArea');
-  el.shiftFilter    = document.getElementById('shiftFilter');
-  el.locFilter      = document.getElementById('locFilter');
-  el.datePicker     = document.getElementById('datePicker');
-  el.searchInput    = document.getElementById('searchInput');
-  el.silentUpdate   = document.getElementById('silentUpdate');
-  el.statusIndicator = document.getElementById('statusIndicator');
-  el.statusDot      = document.getElementById('statusDot');
-  el.statusText     = document.getElementById('statusText');
-
-  el.datePicker.value = new Date().toISOString().split('T')[0];
-
-  const user = state.currentUser;
-  const role = user ? user.role : '';
-
-  if (role === CONFIG.ROLES.SHIFT_SUPERVISOR) {
-    await loadShiftSupervisorView();
-    setInterval(() => loadShiftSupervisorView(true), CONFIG.REFRESH_INTERVAL);
-  } else {
-    fetchData(true);
-    setInterval(() => fetchData(false), CONFIG.REFRESH_INTERVAL);
-  }
-
-  document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-      e.preventDefault();
-      el.searchInput && el.searchInput.focus();
+  /**
+   * Show Main Application
+   */
+  showMainApp() {
+    this.elements.loginScreen.style.display = 'none';
+    this.elements.appContainer.style.display = 'block';
+    
+    // Update UI with user info
+    this.elements.userNameDisplay.textContent = this.state.currentUser.username;
+    this.elements.userRoleDisplay.textContent = this.getRoleDisplayName(this.state.currentUser.role);
+    
+    // Show admin panel for admins
+    if (this.state.currentUser.role === 'admin') {
+      this.elements.adminNav.style.display = 'flex';
     }
-    if (e.key === 'Escape') closePanel();
-  });
-}
+    
+    // Initialize dashboard
+    this.initializeDashboard();
+  },
 
-/* ══════════════════════════════════════════
-   STATUS INDICATOR
-══════════════════════════════════════════ */
-function updateStatus(status) {
-  const labels = { live:'LIVE', error:'ERROR', loading:'CONNECTING…' };
-  el.statusIndicator.className = 'status-indicator ' + status;
-  el.statusDot.className       = 'status-dot ' + status + '-dot';
-  el.statusText.textContent    = labels[status] || 'CONNECTING…';
-}
+  /**
+   * Initialize Dashboard
+   */
+  async initializeDashboard() {
+    await this.loadFilters();
+    await this.fetchData(true);
+    
+    // Start auto-refresh
+    if (CONFIG.FEATURES.ENABLE_AUTO_REFRESH) {
+      this.state.refreshInterval = setInterval(() => {
+        this.fetchData(false);
+      }, CONFIG.REFRESH_INTERVAL);
+    }
+  },
 
-/* ══════════════════════════════════════════
-   DATA FETCHING  (supervisor / QC view)
-══════════════════════════════════════════ */
-async function fetchData(showLoader, isManual) {
-  if (state.isLoading && !isManual) return;
+  /**
+   * Load Filters
+   */
+  async loadFilters() {
+    // Load shifts
+    CONFIG.SHIFTS.forEach(shift => {
+      const option = document.createElement('option');
+      option.value = shift;
+      option.textContent = `Shift ${shift}`;
+      this.elements.shiftFilter.appendChild(option);
+    });
+    
+    // Load locations
+    Object.keys(CONFIG.LOCATION_GROUPS).forEach(group => {
+      const option = document.createElement('option');
+      option.value = group;
+      option.textContent = `📍 ${group}`;
+      this.elements.locationFilter.appendChild(option);
+    });
+  },
 
-  const date     = formatDateForAPI(el.datePicker.value);
-  const cacheKey = 'dash_' + date;
-
-  try {
-    state.isLoading = true;
-    if (showLoader) renderLoader();
-
-    const json    = await apiFetch({ date }, cacheKey);
-    const newData = json.data || {};
-
-    if (!Object.keys(newData).length) {
-      renderEmpty('No data found for ' + date + '. Make sure the date is correct and the sync is running.');
-      updateStatus('error');
+  /**
+   * Fetch Data with Caching
+   */
+  async fetchData(showLoader = false) {
+    if (this.state.isLoading) return;
+    
+    const date = this.elements.datePicker.value.split('-').reverse().join('-');
+    const cacheKey = `data_${date}_${this.state.currentUser.username}`;
+    
+    // Check cache
+    const cached = this.state.cache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < CONFIG.CACHE_TTL) {
+      this.state.rawData = cached.data;
+      this.applyFilters();
       return;
     }
-
-    state.rawData     = newData;
-    state.filteredData = filterByUser(newData);
-    updateStatus('live');
-
-    const hash = hashData(state.filteredData);
-    if (hash !== state.lastDataHash || showLoader || isManual) {
-      state.lastDataHash = hash;
-      updateFilters();
-      renderData();
-      if (!showLoader && !isManual) showSilentToast();
+    
+    this.state.isLoading = true;
+    if (showLoader) this.showLoading();
+    
+    try {
+      const params = {
+        date,
+        username: this.state.currentUser.username,
+        role: this.state.currentUser.role,
+        assignedShift: this.state.currentUser.assignedShift
+      };
+      
+      const response = await this.apiCall('dashboard', params);
+      
+      if (response.success || response.data) {
+        this.state.rawData = response.data || {};
+        this.state.lastUpdate = new Date();
+        
+        // Cache data
+        this.state.cache.set(cacheKey, {
+          data: this.state.rawData,
+          timestamp: Date.now()
+        });
+        
+        this.applyFilters();
+        this.renderMetrics();
+        this.renderContent();
+        
+        this.updateConnectionStatus('live');
+      }
+    } catch (error) {
+      console.error('Fetch error:', error);
+      this.updateConnectionStatus('error');
+      this.showToast('Failed to load data: ' + error.message, 'error');
+    } finally {
+      this.state.isLoading = false;
+      if (showLoader) this.hideLoading();
     }
+  },
 
-    state.lastError  = null;
-    state.isFirstLoad = false;
-
-  } catch (e) {
-    state.lastError = e.message;
-    updateStatus('error');
-    renderError(e);
-  } finally {
-    state.isLoading = false;
-  }
-}
-
-function manualRefresh() {
-  cacheClear('dash_');
-  cacheClear('supbr_');
-  const user = state.currentUser;
-  if (user && user.role === CONFIG.ROLES.SHIFT_SUPERVISOR) {
-    cacheClear('ss_');
-    loadShiftSupervisorView(true);
-  } else {
-    fetchData(true, true);
-  }
-}
-
-/* ══════════════════════════════════════════
-   PERMISSION FILTER
-══════════════════════════════════════════ */
-function filterByUser(data) {
-  const user = state.currentUser;
-  if (!user) return data;
-  if (user.role === CONFIG.ROLES.SUPERVISOR) return data;
-
-  if (user.role === CONFIG.ROLES.QC || user.permission === 'only') {
-    const out = {};
-    for (const [shift, locs] of Object.entries(data)) {
-      for (const [loc, teams] of Object.entries(locs)) {
-        for (const [tn, td] of Object.entries(teams)) {
-          const base = tn.replace(/\s*\([A-Z]{1,3}\)\s*$/, '').trim();
-          if (base === user.username || tn === user.username) {
-            if (!out[shift])          out[shift]       = {};
-            if (!out[shift][loc])     out[shift][loc]  = {};
-            out[shift][loc][tn]                        = td;
+  /**
+   * Apply Filters Based on Search
+   */
+  applyFilters() {
+    const searchTerm = this.state.searchTerm.toLowerCase();
+    
+    if (!searchTerm) {
+      this.state.filteredData = this.state.rawData;
+      return;
+    }
+    
+    // Deep filter
+    this.state.filteredData = {};
+    
+    for (const [shift, locations] of Object.entries(this.state.rawData)) {
+      this.state.filteredData[shift] = {};
+      
+      for (const [location, teams] of Object.entries(locations)) {
+        this.state.filteredData[shift][location] = {};
+        
+        for (const [teamName, teamData] of Object.entries(teams)) {
+          const filteredSubmitted = teamData.submitted.filter(u =>
+            u.email.toLowerCase().includes(searchTerm) ||
+            u.pc.toLowerCase().includes(searchTerm)
+          );
+          
+          const filteredNotSubmitted = teamData.notSubmitted.filter(u =>
+            u.email.toLowerCase().includes(searchTerm) ||
+            u.pc.toLowerCase().includes(searchTerm)
+          );
+          
+          if (filteredSubmitted.length > 0 || filteredNotSubmitted.length > 0) {
+            this.state.filteredData[shift][location][teamName] = {
+              submitted: filteredSubmitted,
+              notSubmitted: filteredNotSubmitted
+            };
           }
+        }
+        
+        if (Object.keys(this.state.filteredData[shift][location]).length === 0) {
+          delete this.state.filteredData[shift][location];
+        }
+      }
+      
+      if (Object.keys(this.state.filteredData[shift]).length === 0) {
+        delete this.state.filteredData[shift];
+      }
+    }
+  },
+
+  /**
+   * Render Metrics Cards
+   */
+  renderMetrics() {
+    const data = this.state.filteredData;
+    
+    let totalActive = 0;
+    let totalSubmitted = 0;
+    let totalPending = 0;
+    
+    for (const shift of Object.values(data)) {
+      for (const location of Object.values(shift)) {
+        for (const team of Object.values(location)) {
+          totalActive += team.submitted.length + team.notSubmitted.length;
+          totalSubmitted += team.submitted.length;
+          totalPending += team.notSubmitted.length;
         }
       }
     }
-    return out;
-  }
-
-  return data;
-}
-
-/* ══════════════════════════════════════════
-   SHIFT SUPERVISOR VIEW
-══════════════════════════════════════════ */
-async function loadShiftSupervisorView(silent) {
-  const user  = state.currentUser;
-  const shift = user.permission; // permission field holds "M", "N", or "ON"
-  const date  = formatDateForAPI(el.datePicker ? el.datePicker.value : new Date().toISOString().split('T')[0]);
-
-  if (!silent) {
-    document.getElementById('shiftSupervisorView').style.display = 'block';
-    document.getElementById('shiftSupervisorView').innerHTML =
-      `<div class="ss-loader"><div class="spinner-ring"></div><p>Loading shift data…</p></div>`;
-  }
-
-  try {
-    const cacheKey = 'ss_' + shift + '_' + date;
-    const data = await apiFetch({ action: 'shiftSupervisor', shift, date }, cacheKey);
-
-    if (!data.success) throw new Error(data.error || 'Failed to load shift data');
-
-    renderShiftSupervisorView(data, shift);
-    document.getElementById('contentArea').style.display = 'none';
-    updateStatus('live');
-
-  } catch (e) {
-    document.getElementById('shiftSupervisorView').innerHTML =
-      `<div class="error-simple"><i class="fas fa-exclamation-triangle"></i> ${e.message}</div>`;
-    updateStatus('error');
-  }
-}
-
-function renderShiftSupervisorView(d, shift) {
-  const shiftLabel = CONFIG.SHIFT_LABELS[shift] || shift;
-  const subPct  = d.tasks.totalSubmitted && d.totalActive
-    ? Math.round((d.tasks.totalSubmitted / d.totalActive) * 100) : 0;
-
-  const radius = 54;
-  const circ   = 2 * Math.PI * radius;
-  const offset = circ - (subPct / 100) * circ;
-
-  // Training rows
-  let trainingHTML = '';
-  if (d.totalTraining > 0) {
-    trainingHTML = `<div class="ss-training-row">`;
-    for (const [lvl, cnt] of Object.entries(d.trainingByLevel || {})) {
-      trainingHTML += `<span class="training-badge">${lvl}: ${cnt}</span>`;
-    }
-    trainingHTML += `</div>`;
-  }
-
-  // Room breakdown rows (for panel)
-  const roomRows = Object.entries(d.roomBreakdown || {}).map(([room, r]) => `
-    <div class="breakdown-row">
-      <span class="br-label"><i class="fas fa-door-open"></i> ${room}</span>
-      <span class="br-chip total">${r.total}</span>
-      <span class="br-chip done">${r.submitted} done</span>
-      <span class="br-chip pend">${r.pending} pending</span>
-    </div>
-  `).join('');
-
-  // Task breakdown rows (for panel)
-  const taskRows = `
-    <div class="breakdown-section-title"><i class="fas fa-layer-group"></i> LIDAR</div>
-    <div class="breakdown-row"><span class="br-label">First Pass</span><span class="br-chip total">${d.tasks.LIDAR.FP}</span></div>
-    <div class="breakdown-row"><span class="br-label">QA</span><span class="br-chip done">${d.tasks.LIDAR.QA}</span></div>
-    <div class="breakdown-section-title" style="margin-top:12px;"><i class="fas fa-road"></i> Lane Line</div>
-    <div class="breakdown-row"><span class="br-label">First Pass</span><span class="br-chip total">${d.tasks.LaneLine.FP}</span></div>
-    <div class="breakdown-row"><span class="br-label">QA</span><span class="br-chip done">${d.tasks.LaneLine.QA}</span></div>
-  `;
-
-  document.getElementById('shiftSupervisorView').innerHTML = `
-    <div class="ss-view">
-      <div class="ss-header">
-        <div class="ss-shift-badge"><i class="fas fa-clock"></i> ${shiftLabel} Shift</div>
-        <div class="ss-date" id="ssDatePicker">
-          <input type="date" id="ssDate" value="${el.datePicker ? el.datePicker.value : ''}" onchange="onSSDateChange(this.value)">
+    
+    const submissionRate = totalActive > 0 ? Math.round((totalSubmitted / totalActive) * 100) : 0;
+    
+    this.elements.metricsGrid.innerHTML = `
+      <div class="metric-card" onclick="App.showMetricDetail('active')">
+        <div class="metric-icon blue">
+          <i class="fas fa-users"></i>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">${totalActive}</div>
+          <div class="metric-label">Total Active Users</div>
         </div>
       </div>
-
-      <div class="ss-kpi-grid">
-
-        <!-- Total Active -->
-        <div class="ss-kpi clickable" onclick='openRoomBreakdown(${JSON.stringify(roomRows)}, "${shiftLabel} — Active Users by Room")'>
-          <div class="kpi-icon active-icon"><i class="fas fa-users"></i></div>
-          <div class="kpi-body">
-            <div class="kpi-label">Total Active Users</div>
-            <div class="kpi-value accent-indigo">${d.totalActive}</div>
-          </div>
-          <div class="kpi-drill"><i class="fas fa-chevron-right"></i></div>
+      
+      <div class="metric-card" onclick="App.showMetricDetail('submitted')">
+        <div class="metric-icon green">
+          <i class="fas fa-check-circle"></i>
         </div>
-
-        <!-- Submitted -->
-        <div class="ss-kpi clickable" onclick='openTaskBreakdown(${JSON.stringify(taskRows)}, "${shiftLabel} — Task Breakdown")'>
-          <div class="kpi-icon submitted-icon"><i class="fas fa-check-circle"></i></div>
-          <div class="kpi-body">
-            <div class="kpi-label">Total Submitted</div>
-            <div class="kpi-value accent-emerald">${d.tasks.totalSubmitted}</div>
-          </div>
-          <div class="kpi-drill"><i class="fas fa-chevron-right"></i></div>
+        <div class="metric-content">
+          <div class="metric-value">${totalSubmitted}</div>
+          <div class="metric-label">Total Submitted</div>
         </div>
-
-        <!-- Pending -->
-        <div class="ss-kpi">
-          <div class="kpi-icon pending-icon"><i class="fas fa-hourglass-half"></i></div>
-          <div class="kpi-body">
-            <div class="kpi-label">Pending</div>
-            <div class="kpi-value accent-crimson">${d.totalActive - d.tasks.totalSubmitted}</div>
-          </div>
-        </div>
-
-        <!-- Progress ring -->
-        <div class="ss-kpi ring-kpi">
-          <div class="ring-wrapper-sm">
-            <svg class="progress-ring-svg" viewBox="0 0 120 120">
-              <circle class="ring-bg"       cx="60" cy="60" r="${radius}"/>
-              <circle class="ring-progress" cx="60" cy="60" r="${radius}"
-                style="stroke-dasharray:${circ};stroke-dashoffset:${offset};"/>
-            </svg>
-            <div class="ring-center">
-              <div class="ring-percentage">${subPct}%</div>
-              <div class="ring-label">Done</div>
-            </div>
-          </div>
-        </div>
-
-        ${d.totalTraining ? `
-        <!-- Training -->
-        <div class="ss-kpi training-kpi">
-          <div class="kpi-icon training-icon"><i class="fas fa-graduation-cap"></i></div>
-          <div class="kpi-body">
-            <div class="kpi-label">In Training</div>
-            <div class="kpi-value accent-yellow">${d.totalTraining}</div>
-            ${trainingHTML}
-          </div>
-        </div>` : ''}
-
       </div>
-    </div>
-  `;
-}
-
-function onSSDateChange(val) {
-  if (el.datePicker) el.datePicker.value = val;
-  cacheClear('ss_');
-  loadShiftSupervisorView(false);
-}
-
-/* ══════════════════════════════════════════
-   BREAKDOWN PANEL
-══════════════════════════════════════════ */
-function openPanel(title, html) {
-  document.getElementById('panelTitle').textContent = title;
-  document.getElementById('panelBody').innerHTML    = html;
-  document.getElementById('breakdownPanel').classList.add('open');
-  document.getElementById('panelOverlay').classList.add('open');
-  document.body.style.overflow = 'hidden';
-}
-
-function closePanel() {
-  document.getElementById('breakdownPanel').classList.remove('open');
-  document.getElementById('panelOverlay').classList.remove('open');
-  document.body.style.overflow = '';
-}
-
-function openRoomBreakdown(roomRowsHTML, title) {
-  openPanel(title, `<div class="breakdown-list">${roomRowsHTML}</div>`);
-}
-
-function openTaskBreakdown(taskRowsHTML, title) {
-  openPanel(title, `<div class="breakdown-list">${taskRowsHTML}</div>`);
-}
-
-async function openSupervisorBreakdown(locName) {
-  openPanel(locName + ' — Breakdown', '<div class="panel-loader"><div class="spinner-ring"></div></div>');
-
-  const date = formatDateForAPI(el.datePicker.value);
-  try {
-    const data = await apiFetch({ action: 'supervisorBreakdown', date }, 'supbr_' + date);
-    if (!data.success) throw new Error(data.error);
-
-    const loc = (data.locations || {})[locName];
-    if (!loc) { document.getElementById('panelBody').innerHTML = '<p class="text-muted">No data for this location.</p>'; return; }
-
-    const teamRows = Object.entries(loc.teams || {}).map(([tn, t]) => `
-      <div class="breakdown-row">
-        <span class="br-label"><i class="fas fa-user-tie"></i> ${tn}</span>
-        <span class="br-chip done">${t.submitted} done</span>
-        <span class="br-chip pend">${t.pending} pending</span>
-      </div>
-    `).join('');
-
-    document.getElementById('panelBody').innerHTML = `
-      <div class="breakdown-list">
-        <div class="breakdown-row summary-row">
-          <span class="br-label">Total Active</span><span class="br-chip total">${loc.total}</span>
-          <span class="br-chip done">${loc.submitted} submitted</span>
-          <span class="br-chip pend">${loc.pending} pending</span>
+      
+      <div class="metric-card" onclick="App.showMetricDetail('pending')">
+        <div class="metric-icon red">
+          <i class="fas fa-clock"></i>
         </div>
-        <div class="breakdown-section-title"><i class="fas fa-users"></i> Team Breakdown</div>
-        ${teamRows}
-        <div class="breakdown-section-title" style="margin-top:16px;"><i class="fas fa-layer-group"></i> Task Totals</div>
-        <div class="breakdown-row"><span class="br-label">LIDAR — First Pass</span><span class="br-chip total">${loc.lidarFP}</span></div>
-        <div class="breakdown-row"><span class="br-label">LIDAR — QA</span><span class="br-chip done">${loc.lidarQA}</span></div>
-        <div class="breakdown-row"><span class="br-label">Lane Line — First Pass</span><span class="br-chip total">${loc.laneLineFP}</span></div>
-        <div class="breakdown-row"><span class="br-label">Lane Line — QA</span><span class="br-chip done">${loc.laneLineQA}</span></div>
+        <div class="metric-content">
+          <div class="metric-value">${totalPending}</div>
+          <div class="metric-label">Pending</div>
+        </div>
+      </div>
+      
+      <div class="metric-card">
+        <div class="metric-icon purple">
+          <i class="fas fa-percentage"></i>
+        </div>
+        <div class="metric-content">
+          <div class="metric-value">${submissionRate}%</div>
+          <div class="metric-label">Submission Rate</div>
+        </div>
+        <div class="metric-progress">
+          <div class="progress-bar" style="width: ${submissionRate}%"></div>
+        </div>
       </div>
     `;
-  } catch (e) {
-    document.getElementById('panelBody').innerHTML = `<div class="error-simple">${e.message}</div>`;
-  }
-}
+  },
 
-async function openQcBreakdown(tlName) {
-  openPanel(tlName + ' — Task Breakdown', '<div class="panel-loader"><div class="spinner-ring"></div></div>');
-
-  const date = formatDateForAPI(el.datePicker.value);
-  try {
-    const data = await apiFetch({ action: 'qcBreakdown', tlName, date },
-      'qcbr_' + tlName.replace(/\s/g,'_') + '_' + date);
-
-    if (!data.success) throw new Error(data.error);
-
-    document.getElementById('panelBody').innerHTML = `
-      <div class="breakdown-list">
-        <div class="breakdown-row summary-row">
-          <span class="br-label">Total Submitted</span>
-          <span class="br-chip done">${data.totalSubmitted}</span>
-        </div>
-        <div class="breakdown-section-title"><i class="fas fa-layer-group"></i> LIDAR</div>
-        <div class="breakdown-row"><span class="br-label">First Pass</span><span class="br-chip total">${data.LIDAR.FP}</span></div>
-        <div class="breakdown-row"><span class="br-label">QA</span><span class="br-chip done">${data.LIDAR.QA}</span></div>
-        <div class="breakdown-section-title" style="margin-top:12px;"><i class="fas fa-road"></i> Lane Line</div>
-        <div class="breakdown-row"><span class="br-label">First Pass</span><span class="br-chip total">${data.LaneLine.FP}</span></div>
-        <div class="breakdown-row"><span class="br-label">QA</span><span class="br-chip done">${data.LaneLine.QA}</span></div>
-      </div>
-    `;
-  } catch (e) {
-    document.getElementById('panelBody').innerHTML = `<div class="error-simple">${e.message}</div>`;
-  }
-}
-
-/* ══════════════════════════════════════════
-   UTILITY
-══════════════════════════════════════════ */
-function formatDateForAPI(s) { return s.split('-').reverse().join('-'); }
-
-function hashData(data) {
-  let h = '';
-  Object.keys(data).forEach(s =>
-    Object.keys(data[s]).forEach(l =>
-      Object.values(data[s][l]).forEach(t =>
-        h += t.submitted.length + '-' + t.notSubmitted.length
-      )
-    )
-  );
-  return h;
-}
-
-function escapeHTML(s) {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
-
-function cardID(shift, loc, tl) {
-  return ('card-' + shift + '-' + loc + '-' + tl).replace(/\s+/g, '-');
-}
-
-/* ══════════════════════════════════════════
-   FILTERS
-══════════════════════════════════════════ */
-function updateFilters() {
-  const shifts = new Set();
-  const locs   = new Set();
-  const data   = state.filteredData;
-
-  Object.keys(data).forEach(s => {
-    shifts.add(s);
-    Object.keys(data[s]).forEach(l => locs.add(l));
-  });
-  Object.keys(CONFIG.LOCATION_GROUPS).forEach(g => locs.add(g));
-
-  const curS = el.shiftFilter.value;
-  const curL = el.locFilter.value;
-
-  el.shiftFilter.innerHTML = '<option value="all">All Shifts</option>';
-  Array.from(shifts).sort().forEach(s => {
-    const o = document.createElement('option');
-    o.value = s; o.textContent = 'Shift: ' + s;
-    if (s === curS) o.selected = true;
-    el.shiftFilter.appendChild(o);
-  });
-
-  el.locFilter.innerHTML = '<option value="all">All Locations</option>';
-  Object.keys(CONFIG.LOCATION_GROUPS).sort().forEach(g => {
-    const o = document.createElement('option');
-    o.value = g; o.textContent = '📍 ' + g;
-    o.style.fontWeight = 'bold';
-    if (g === curL) o.selected = true;
-    el.locFilter.appendChild(o);
-  });
-
-  const grouped = new Set(Object.values(CONFIG.LOCATION_GROUPS).flat());
-  Array.from(locs)
-    .filter(l => !grouped.has(l) && !CONFIG.LOCATION_GROUPS[l])
-    .sort()
-    .forEach(l => {
-      const o = document.createElement('option');
-      o.value = l; o.textContent = l;
-      if (l === curL) o.selected = true;
-      el.locFilter.appendChild(o);
-    });
-}
-
-/* ══════════════════════════════════════════
-   SEARCH
-══════════════════════════════════════════ */
-function handleSearch() {
-  state.searchTerm = el.searchInput.value.toLowerCase().trim();
-  renderData();
-}
-
-function matchSearch(email, pc) {
-  if (!state.searchTerm) return true;
-  return email.toLowerCase().includes(state.searchTerm) ||
-         String(pc).toLowerCase().includes(state.searchTerm);
-}
-
-/* ══════════════════════════════════════════
-   ACCORDION
-══════════════════════════════════════════ */
-function toggleTeam(id) {
-  const card = document.getElementById(id);
-  if (!card) return;
-  card.classList.toggle('active');
-  if (card.classList.contains('active')) state.openTeams.add(id);
-  else                                    state.openTeams.delete(id);
-}
-
-/* ══════════════════════════════════════════
-   RENDER
-══════════════════════════════════════════ */
-function renderLoader() {
-  el.contentArea.innerHTML = `
-    <div id="loader">
-      <div class="loader-spinner">
-        <div class="spinner-ring"></div>
-        <div class="loader-text">Connecting to server<span class="loader-dots"><span>.</span><span>.</span><span>.</span></span></div>
-      </div>
-    </div>`;
-}
-
-function renderEmpty(msg) {
-  el.contentArea.innerHTML = `
-    <div class="empty-state" style="padding:80px;text-align:center;">
-      <i class="fas fa-inbox" style="font-size:56px;opacity:.2;display:block;margin-bottom:20px;"></i>
-      <p style="font-size:15px;color:var(--text-muted);">${msg}</p>
-      <button class="btn btn-primary" style="margin-top:20px;" onclick="manualRefresh()">
-        <i class="fas fa-redo"></i> Try Again
-      </button>
-    </div>`;
-}
-
-function renderError(e) {
-  const msg = e.name === 'AbortError'
-    ? 'Request timed out. Server may be slow.'
-    : e.message || 'Unknown error';
-
-  el.contentArea.innerHTML = `
-    <div class="error-state">
-      <div class="error-header">
-        <div class="error-icon"><i class="fas fa-exclamation-triangle"></i></div>
-        <div class="error-title-section">
-          <div class="error-title">Connection Error</div>
-          <div class="error-subtitle">${escapeHTML(msg)}</div>
-        </div>
-      </div>
-      <div class="error-actions">
-        <button class="btn btn-primary" onclick="manualRefresh()">
-          <i class="fas fa-redo"></i> Try Again
-        </button>
-      </div>
-    </div>`;
-}
-
-function renderData() {
-  const selShift = el.shiftFilter.value;
-  const selLoc   = el.locFilter.value;
-  const data     = state.filteredData;
-
-  el.contentArea.innerHTML = '';
-
-  if (!Object.keys(data).length) {
-    renderEmpty(
-      state.currentUser && state.currentUser.role === CONFIG.ROLES.QC
-        ? 'No data for your team today.'
-        : 'No data available for selected date.'
-    );
-    return;
-  }
-
-  const isGroup = selLoc !== 'all' && CONFIG.LOCATION_GROUPS[selLoc];
-  const user    = state.currentUser;
-  const isQC    = user && user.role === CONFIG.ROLES.QC;
-  const isSup   = user && user.role === CONFIG.ROLES.SUPERVISOR;
-  let animIdx   = 0;
-
-  for (const [shift, locations] of Object.entries(data)) {
-    if (selShift !== 'all' && shift !== selShift) continue;
-
-    const wrapper = document.createElement('div');
-    wrapper.innerHTML = `<div class="shift-tag"><i class="fas fa-clock"></i> Shift: ${shift}</div>`;
-
-    if (isGroup) {
-      const sec = buildGroupSection(selLoc, shift, locations, animIdx++);
-      if (sec) wrapper.appendChild(sec);
-    } else {
-      const rendered = new Set();
-      Object.keys(CONFIG.LOCATION_GROUPS).forEach(grp => {
-        if (selLoc !== 'all' && selLoc !== grp) return;
-        const members = (CONFIG.LOCATION_GROUPS[grp] || []).filter(l => locations[l]);
-        if (!members.length) return;
-        const sec = buildGroupSection(grp, shift, locations, animIdx++, members, isSup);
-        wrapper.appendChild(sec);
-        members.forEach(l => rendered.add(l));
-      });
-
-      for (const [loc, teams] of Object.entries(locations)) {
-        if (selLoc !== 'all' && loc !== selLoc) continue;
-        if (rendered.has(loc)) continue;
-        wrapper.appendChild(buildLocationSection(loc, teams, shift, animIdx++ * CONFIG.ANIMATION_STAGGER_DELAY, isSup, isQC));
+  /**
+   * Render Content
+   */
+  renderContent() {
+    const data = this.state.filteredData;
+    const selectedShift = this.elements.shiftFilter.value;
+    const selectedLocation = this.elements.locationFilter.value;
+    
+    let html = '';
+    
+    for (const [shift, locations] of Object.entries(data)) {
+      if (selectedShift !== 'all' && shift !== selectedShift) continue;
+      
+      html += `<div class="shift-section"><h3 class="shift-title"><i class="fas fa-clock"></i> Shift ${shift}</h3>`;
+      
+      for (const [location, teams] of Object.entries(locations)) {
+        if (selectedLocation !== 'all' && 
+            selectedLocation !== location && 
+            !this.isLocationInGroup(location, selectedLocation)) continue;
+        
+        html += this.renderLocationSection(location, teams);
       }
+      
+      html += '</div>';
     }
+    
+    this.elements.contentArea.innerHTML = html || '<div class="empty-state"><i class="fas fa-inbox"></i><p>No data found</p></div>';
+  },
 
-    el.contentArea.appendChild(wrapper);
-  }
-}
-
-/* ── Group section (e.g. Saint Fatima) ── */
-function buildGroupSection(grpName, shift, allLocs, delay, rooms, isSup) {
-  const roomList = rooms || (CONFIG.LOCATION_GROUPS[grpName] || []).filter(r => allLocs[r]);
-  if (!roomList.length) return null;
-
-  let totalSub = 0, totalPend = 0;
-  const roomData = {};
-  roomList.forEach(r => {
-    roomData[r] = allLocs[r];
-    Object.values(allLocs[r]).forEach(t => { totalSub += t.submitted.length; totalPend += t.notSubmitted.length; });
-  });
-
-  const total = totalSub + totalPend;
-  const pct   = total ? Math.round((totalSub / total) * 100) : 0;
-
-  let roomsHTML = '';
-  roomList.forEach((r, i) => {
-    const bdClick = isSup ? `onclick="openSupervisorBreakdown('${escapeHTML(r)}')"` : '';
-    roomsHTML += `
-      <div class="room-subsection" style="animation:sectionAppear .5s ease ${(delay * CONFIG.ANIMATION_STAGGER_DELAY) + (i + 1) * 100}ms backwards;">
-        <div class="room-title ${isSup ? 'clickable-title' : ''}" ${bdClick}>
-          <i class="fas fa-door-open"></i> ${r}
-          ${isSup ? '<i class="fas fa-chart-bar room-bd-icon"></i>' : ''}
-        </div>
-        ${buildTeamsGrid(roomData[r], shift, r, i, isSup, false)}
-      </div>`;
-  });
-
-  const sec = document.createElement('div');
-  sec.className = 'location-section';
-  sec.style.animationDelay = delay * CONFIG.ANIMATION_STAGGER_DELAY + 'ms';
-  sec.innerHTML = `
-    <div class="location-title">
-      <div class="location-icon"><i class="fas fa-building"></i></div>
-      ${grpName}
-    </div>
-    ${buildHeroStats({ submitted: totalSub, notSubmitted: totalPend, total, percentage: pct })}
-    <div class="room-group">${roomsHTML}</div>`;
-  return sec;
-}
-
-/* ── Individual location section ── */
-function buildLocationSection(loc, teams, shift, delay, isSup, isQC) {
-  const stats    = calcStats(teams);
-  const bdClick  = isSup ? `onclick="openSupervisorBreakdown('${escapeHTML(loc)}')"` : '';
-
-  const sec = document.createElement('div');
-  sec.className = 'location-section';
-  sec.style.animationDelay = delay + 'ms';
-  sec.innerHTML = `
-    <div class="location-title ${isSup ? 'clickable-title' : ''}" ${bdClick}>
-      <div class="location-icon"><i class="fas fa-map-marker-alt"></i></div>
-      ${loc}
-      ${isSup ? '<span class="bd-hint"><i class="fas fa-chart-bar"></i> Breakdown</span>' : ''}
-    </div>
-    ${buildHeroStats(stats)}
-    ${buildTeamsGrid(teams, shift, loc, 0, isSup, isQC)}`;
-  return sec;
-}
-
-function calcStats(teams) {
-  let s = 0, n = 0;
-  Object.values(teams).forEach(t => { s += t.submitted.length; n += t.notSubmitted.length; });
-  const total = s + n;
-  return { submitted: s, notSubmitted: n, total, percentage: total ? Math.round((s / total) * 100) : 0 };
-}
-
-/* ── Hero stats bar ── */
-function buildHeroStats({ submitted, notSubmitted, total, percentage }) {
-  const r    = 54;
-  const circ = 2 * Math.PI * r;
-  const off  = circ - (percentage / 100) * circ;
-  return `
-    <div class="hero-stats">
-      <div class="stat-card submitted"><div class="stat-icon"><i class="fas fa-check-circle"></i></div>
-        <div class="stat-info"><span class="stat-label">Submitted</span><span class="stat-value">${submitted}</span></div></div>
-      <div class="stat-card not-submitted"><div class="stat-icon"><i class="fas fa-exclamation-circle"></i></div>
-        <div class="stat-info"><span class="stat-label">Pending</span><span class="stat-value">${notSubmitted}</span></div></div>
-      <div class="stat-card total"><div class="stat-icon"><i class="fas fa-users"></i></div>
-        <div class="stat-info"><span class="stat-label">Total Users</span><span class="stat-value">${total}</span></div></div>
-      <div class="progress-ring-container">
-        <div class="ring-wrapper">
-          <svg class="progress-ring-svg" viewBox="0 0 120 120">
-            <circle class="ring-bg" cx="60" cy="60" r="${r}"/>
-            <circle class="ring-progress" cx="60" cy="60" r="${r}"
-              style="stroke-dasharray:${circ};stroke-dashoffset:${off};"/>
-          </svg>
-          <div class="ring-center">
-            <div class="ring-percentage">${percentage}%</div>
-            <div class="ring-label">Done</div>
+  /**
+   * Render Location Section
+   */
+  renderLocationSection(location, teams) {
+    let totalSubmitted = 0;
+    let totalPending = 0;
+    
+    for (const team of Object.values(teams)) {
+      totalSubmitted += team.submitted.length;
+      totalPending += team.notSubmitted.length;
+    }
+    
+    const total = totalSubmitted + totalPending;
+    const rate = total > 0 ? Math.round((totalSubmitted / total) * 100) : 0;
+    
+    return `
+      <div class="location-card">
+        <div class="location-header">
+          <div class="location-title">
+            <i class="fas fa-building"></i>
+            <span>${location}</span>
+          </div>
+          <div class="location-stats">
+            <span class="stat-badge green">${totalSubmitted} submitted</span>
+            <span class="stat-badge red">${totalPending} pending</span>
+            <span class="stat-badge blue">${total} total</span>
           </div>
         </div>
-        <div class="ring-details">
-          <div class="detail-row"><span class="detail-dot done"></span><span>${submitted} Completed</span></div>
-          <div class="detail-row"><span class="detail-dot pending"></span><span>${notSubmitted} Remaining</span></div>
+        
+        <div class="teams-container">
+          ${Object.entries(teams).map(([teamName, teamData]) => this.renderTeamCard(teamName, teamData)).join('')}
         </div>
       </div>
-    </div>`;
-}
+    `;
+  },
 
-/* ── Teams grid ── */
-function buildTeamsGrid(teams, shift, loc, roomIdx, isSup, isQC) {
-  let html = '<div class="teams-grid">';
-  let idx  = 0;
-
-  for (const [tl, td] of Object.entries(teams)) {
-    const id       = cardID(shift, loc, tl);
-    const isActive = state.openTeams.has(id) ? 'active' : '';
-    const filtSub  = td.submitted.filter(u => matchSearch(u.email, u.pc));
-    const filtPend = td.notSubmitted.filter(u => matchSearch(u.email, u.pc));
-    if (state.searchTerm && !filtSub.length && !filtPend.length) continue;
-
-    const delay     = (roomIdx + 1) * 60 + (++idx) * 60;
-    const bdClick   = isQC
-      ? `<button class="tl-breakdown-btn" onclick="event.stopPropagation();openQcBreakdown('${escapeHTML(tl)}')"><i class="fas fa-chart-bar"></i></button>`
-      : '';
-
-    html += `
-      <div class="team-card ${isActive}" id="${id}" style="animation-delay:${delay}ms;">
-        <div class="team-header" onclick="toggleTeam('${id}')">
-          <div class="tl-info">
-            <span class="team-name"><i class="fas fa-user-tie"></i> ${tl} ${bdClick}</span>
-            <div class="tl-badge-container">
-              <span class="badge badge-done"><span class="badge-dot"></span>Done: ${filtSub.length}</span>
-              <span class="badge badge-not"><span class="badge-dot"></span>Pending: ${filtPend.length}</span>
+  /**
+   * Render Team Card
+   */
+  renderTeamCard(teamName, teamData) {
+    const cardId = `team-${teamName.replace(/\s+/g, '-').toLowerCase()}`;
+    
+    return `
+      <div class="team-card" id="${cardId}">
+        <div class="team-header" onclick="App.toggleTeam('${cardId}')">
+          <div class="team-info">
+            <i class="fas fa-user-tie"></i>
+            <span class="team-name">${teamName}</span>
+            <div class="team-badges">
+              <span class="badge green">${teamData.submitted.length} done</span>
+              <span class="badge red">${teamData.notSubmitted.length} pending</span>
             </div>
           </div>
-          <div class="chevron-icon"><i class="fas fa-chevron-down"></i></div>
+          <i class="fas fa-chevron-down chevron"></i>
         </div>
+        
         <div class="team-content">
-          <div class="content-inner">
-            <div class="split-view">
-              <div class="column">
-                <div class="col-title not-submit"><i class="fas fa-clock"></i>Pending<span class="col-count">${filtPend.length}</span></div>
-                ${filtPend.length ? filtPend.map((u, i) => userBox(u, 'not-sub', i)).join('') : '<div class="empty-state">No pending users</div>'}
+          <div class="team-columns">
+            <div class="column pending">
+              <h4><i class="fas fa-clock"></i> Pending (${teamData.notSubmitted.length})</h4>
+              <div class="user-list">
+                ${teamData.notSubmitted.map(u => this.renderUserBox(u, 'pending')).join('')}
               </div>
-              <div class="column">
-                <div class="col-title submit"><i class="fas fa-check-double"></i>Submitted<span class="col-count">${filtSub.length}</span></div>
-                ${filtSub.length ? filtSub.map((u, i) => userBox(u, 'sub', i)).join('') : '<div class="empty-state">No submissions yet</div>'}
+            </div>
+            
+            <div class="column submitted">
+              <h4><i class="fas fa-check-double"></i> Submitted (${teamData.submitted.length})</h4>
+              <div class="user-list">
+                ${teamData.submitted.map(u => this.renderUserBox(u, 'submitted')).join('')}
               </div>
             </div>
           </div>
         </div>
-      </div>`;
+      </div>
+    `;
+  },
+
+  /**
+   * Render User Box
+   */
+  renderUserBox(user, type) {
+    return `
+      <div class="user-box ${type}">
+        <div class="user-email">${this.escapeHtml(user.email)}</div>
+        <div class="user-pc"><i class="fas fa-desktop"></i> ${this.escapeHtml(user.pc)}</div>
+      </div>
+    `;
+  },
+
+  /**
+   * Toggle Team Expansion
+   */
+  toggleTeam(cardId) {
+    const card = document.getElementById(cardId);
+    if (!card) return;
+    
+    card.classList.toggle('active');
+  },
+
+  /**
+   * Filter Data
+   */
+  filterData() {
+    this.renderContent();
+  },
+
+  /**
+   * Debounced Search
+   */
+  debounceSearch() {
+    clearTimeout(this.searchTimeout);
+    this.searchTimeout = setTimeout(() => {
+      this.state.searchTerm = this.elements.searchInput.value;
+      this.applyFilters();
+      this.renderMetrics();
+      this.renderContent();
+    }, CONFIG.DEBOUNCE_DELAY);
+  },
+
+  /**
+   * Manual Refresh
+   */
+  async manualRefresh() {
+    // Clear cache for this date
+    const date = this.elements.datePicker.value.split('-').reverse().join('-');
+    const cacheKey = `data_${date}_${this.state.currentUser.username}`;
+    this.state.cache.delete(cacheKey);
+    
+    await this.fetchData(true);
+    this.showToast('Data refreshed', 'success');
+  },
+
+  /**
+   * User Management
+   */
+  showUserManagement() {
+    this.switchView('userManagementView');
+    UserManagement.loadUsers();
+  },
+
+  showDashboard() {
+    this.switchView('dashboardView');
+  },
+
+  switchView(viewId) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    
+    document.getElementById(viewId).classList.add('active');
+    event.target.closest('.nav-item')?.classList.add('active');
+  },
+
+  /**
+   * API Call Helper
+   */
+  async apiCall(action, params = {}) {
+    const url = `${CONFIG.API_URL}?action=${action}&${new URLSearchParams(params).toString()}`;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT);
+    
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
+    }
+  },
+
+  /**
+   * Utility Functions
+   */
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  },
+
+  getRoleDisplayName(role) {
+    const roles = {
+      'admin': 'Administrator',
+      'shift_supervisor': 'Shift Supervisor',
+      'supervisor': 'Supervisor',
+      'qc': 'Quality Controller'
+    };
+    return roles[role] || role;
+  },
+
+  isLocationInGroup(location, group) {
+    const groupLocations = CONFIG.LOCATION_GROUPS[group];
+    return groupLocations && groupLocations.includes(location);
+  },
+
+  showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `
+      <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+      <span>${message}</span>
+    `;
+    
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+      toast.classList.add('toast-hide');
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  },
+
+  updateConnectionStatus(status) {
+    const chip = document.getElementById('connectionStatus');
+    const dot = chip.querySelector('.status-dot');
+    const text = chip.querySelector('.status-text');
+    
+    dot.className = `status-dot ${status}`;
+    text.textContent = status === 'live' ? 'Live' : status === 'error' ? 'Error' : 'Loading';
+  },
+
+  showLoading() {
+    this.elements.contentArea.innerHTML = `
+      <div class="loading-container">
+        <div class="spinner-ring large"></div>
+        <p>Loading data...</p>
+      </div>
+    `;
+  },
+
+  hideLoading() {
+    // Content is rendered elsewhere
+  },
+
+  setupKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        this.elements.searchInput.focus();
+      }
+      if (e.key === 'Escape') {
+        this.elements.searchInput.blur();
+        this.elements.userDropdown.classList.remove('show');
+      }
+    });
+  },
+
+  toggleSidebar() {
+    this.elements.sidebar.classList.toggle('open');
+  },
+
+  toggleUserMenu() {
+    this.elements.userDropdown.classList.toggle('show');
+  },
+
+  showProfile() {
+    this.showToast('Profile feature coming soon', 'info');
+  },
+
+  showSettings() {
+    this.showToast('Settings feature coming soon', 'info');
+  },
+
+  handleLogout() {
+    sessionStorage.removeItem('currentUser');
+    this.state.currentUser = null;
+    this.state.rawData = {};
+    this.state.filteredData = {};
+    
+    if (this.state.refreshInterval) {
+      clearInterval(this.state.refreshInterval);
+    }
+    
+    location.reload();
+  },
+
+  showMetricDetail(type) {
+    this.showToast(`Showing ${type} details - Feature coming soon`, 'info');
   }
+};
 
-  html += '</div>';
-  return html;
-}
+/**
+ * ============================================
+ * USER MANAGEMENT MODULE
+ * ============================================
+ */
 
-/* ── User box ── */
-function userBox(user, type, idx) {
-  return `
-    <div class="user-box ${type}-box" style="animation-delay:${idx * 35}ms;">
-      <span class="u-email">${escapeHTML(user.email)}</span>
-      <span class="u-meta"><i class="fas fa-desktop"></i>PC: ${escapeHTML(user.pc)}</span>
-    </div>`;
-}
+const UserManagement = {
+  async loadUsers() {
+    try {
+      const response = await App.apiCall('users');
+      const tbody = document.getElementById('usersTableBody');
+      
+      if (response.success && response.users) {
+        tbody.innerHTML = response.users.map(user => `
+          <tr>
+            <td><strong>${user.username}</strong></td>
+            <td><span class="role-badge">${user.role}</span></td>
+            <td>${user.permission}</td>
+            <td>${user.assignedShift || '-'}</td>
+            <td>${new Date(user.createdAt).toLocaleDateString()}</td>
+            <td>
+              <button class="icon-btn" onclick="UserManagement.editUser('${user.username}')" title="Edit">
+                <i class="fas fa-edit"></i>
+              </button>
+              <button class="icon-btn danger" onclick="UserManagement.deleteUser('${user.username}')" title="Delete">
+                <i class="fas fa-trash"></i>
+              </button>
+            </td>
+          </tr>
+        `).join('');
+      }
+    } catch (error) {
+      App.showToast('Failed to load users: ' + error.message, 'error');
+    }
+  },
 
-/* ── Silent toast ── */
-function showSilentToast() {
-  const t = el.silentUpdate;
-  if (!t) return;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2500);
-}
+  showCreateModal() {
+    const modal = document.getElementById('modalOverlay');
+    modal.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Create New User</h2>
+          <button class="modal-close" onclick="App.closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+          <form id="createUserForm" onsubmit="UserManagement.createUser(event)">
+            <div class="form-group">
+              <label>Username</label>
+              <input type="text" name="username" required class="md3-input">
+            </div>
+            <div class="form-group">
+              <label>Password</label>
+              <input type="password" name="password" required class="md3-input">
+            </div>
+            <div class="form-group">
+              <label>Role</label>
+              <select name="role" required class="md3-select">
+                <option value="qc">QC</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="shift_supervisor">Shift Supervisor</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Permission</label>
+              <select name="permission" class="md3-select">
+                <option value="only">Only</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Assigned Shift (for Shift Supervisors)</label>
+              <select name="assignedShift" class="md3-select">
+                <option value="">None</option>
+                <option value="M">Morning (M)</option>
+                <option value="N">Night (N)</option>
+                <option value="ON">Overnight (ON)</option>
+              </select>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="md3-button" onclick="App.closeModal()">Cancel</button>
+              <button type="submit" class="md3-button md3-button-primary">Create User</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+    modal.style.display = 'flex';
+  },
 
-/* ══════════════════════════════════════════
-   BOOT
-══════════════════════════════════════════ */
-window.addEventListener('DOMContentLoaded', async () => {
-  await loadLoginUsers();
-  // cache elements for later
-  el.contentArea = document.getElementById('contentArea');
-  el.shiftFilter = document.getElementById('shiftFilter');
-  el.locFilter   = document.getElementById('locFilter');
-  el.datePicker  = document.getElementById('datePicker');
-  el.searchInput = document.getElementById('searchInput');
-  el.silentUpdate = document.getElementById('silentUpdate');
-  el.statusIndicator = document.getElementById('statusIndicator');
-  el.statusDot   = document.getElementById('statusDot');
-  el.statusText  = document.getElementById('statusText');
+  async createUser(event) {
+    event.preventDefault();
+    const form = event.target;
+    const formData = new FormData(form);
+    const params = Object.fromEntries(formData);
+    
+    try {
+      const response = await App.apiCall('createUser', params);
+      
+      if (response.success) {
+        App.showToast('User created successfully', 'success');
+        App.closeModal();
+        this.loadUsers();
+      } else {
+        throw new Error(response.error);
+      }
+    } catch (error) {
+      App.showToast('Failed to create user: ' + error.message, 'error');
+    }
+  },
+
+  async deleteUser(username) {
+    if (!confirm(`Are you sure you want to delete user "${username}"?`)) return;
+    
+    try {
+      const response = await App.apiCall('deleteUser', { username });
+      
+      if (response.success) {
+        App.showToast('User deleted successfully', 'success');
+        this.loadUsers();
+      } else {
+        throw new Error(response.error);
+      }
+    } catch (error) {
+      App.showToast('Failed to delete user: ' + error.message, 'error');
+    }
+  },
+
+  editUser(username) {
+    App.showToast('Edit user feature coming soon', 'info');
+  }
+};
+
+/**
+ * ============================================
+ * APP INITIALIZATION
+ * ============================================
+ */
+
+// Extend App with modal close
+App.closeModal = function() {
+  document.getElementById('modalOverlay').style.display = 'none';
+};
+
+// Initialize on DOM load
+window.addEventListener('DOMContentLoaded', () => {
+  App.init();
+});
+
+// Close dropdowns on outside click
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.user-menu')) {
+    document.getElementById('userDropdown')?.classList.remove('show');
+  }
 });
