@@ -1,14 +1,14 @@
-/**
  * ============================================
- * SCRIPT.JS — Application Engine v3.0
+ * SCRIPT.JS — Application Engine V3.0
  * ============================================
- * NO DEMO MODE | Optimized | Role-Based Views
+ * ✅ NO DEMO MODE - Production Only
  */
 
 /* ---- Application State ---- */
 const state = {
     rawData: {},
     filteredData: {},
+    shiftSupervisorData: null, // ✅ NEW
     openTeams: new Set(),
     searchTerm: '',
     lastDataHash: '',
@@ -16,107 +16,78 @@ const state = {
     isLoading: false,
     lastError: null,
     customApiUrl: null,
+    
+    // Login state
     currentUser: null,
     usersData: [],
     isLoggedIn: false,
     usersRefreshInterval: null,
-    currentView: 'dashboard', // dashboard | shift_supervisor | supervisor | qc
-    currentShift: 'M',
-    currentLocation: '',
-    renderCache: new Map(),
-    dataCache: new Map(),
-    cacheTimestamp: 0
+    
+    // ✅ NEW: Performance optimization
+    dataCache: {},
+    lastFetchTime: null
 };
-
-/* ---- JSONP Fallback for CORS Issues ---- */
-function fetchJSONP(url) {
-    return new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        const callbackName = 'jsonp_' + Math.random().toString(36).substr(2, 9);
-        const separator = url.includes('?') ? '&' : '?';
-        script.src = url + separator + 'callback=' + callbackName;
-
-        window[callbackName] = (data) => {
-            delete window[callbackName];
-            document.head.removeChild(script);
-            resolve(data);
-        };
-
-        script.onerror = () => {
-            delete window[callbackName];
-            document.head.removeChild(script);
-            reject(new Error('JSONP failed'));
-        };
-
-        script.timeout = 10000;
-        setTimeout(() => {
-            if (window[callbackName]) {
-                delete window[callbackName];
-                if (script.parentNode) document.head.removeChild(script);
-                reject(new Error('JSONP timeout'));
-            }
-        }, 10000);
-
-        document.head.appendChild(script);
-    });
-}
-
-async function fetchWithFallback(url, options = {}) {
-    try {
-        // Try normal fetch first (with CORS mode)
-        const response = await fetch(url, {
-            ...options,
-            mode: 'cors',
-            headers: { ...options.headers, 'Accept': 'application/json' }
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return await response.json();
-    } catch (corsError) {
-        console.warn('CORS fetch failed, trying JSONP fallback...', corsError.message);
-        // Fallback to JSONP
-        try {
-            return await fetchJSONP(url);
-        } catch (jsonpError) {
-            throw new Error(`Both CORS and JSONP failed. ${jsonpError.message}`);
-        }
-    }
-}
 
 /* ---- Cached DOM Elements ---- */
 const elements = {};
 
 /* ============================================
-   LOGIN FUNCTIONS
+   LOGIN FUNCTIONS (Optimized)
    ============================================ */
 async function loadLoginUsers(forceRefresh = false) {
     const apiUrl = CONFIG.LOGIN_API_URL + '?action=users';
+    
     try {
-        const data = await fetchWithFallback(apiUrl, {
-            headers: { 'Cache-Control': 'no-cache' }
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(apiUrl, {
+            signal: controller.signal,
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' }
         });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const data = await response.json();
+        
         if (data.success && data.users && data.users.length > 0) {
             state.usersData = data.users;
+            state.usersLastUpdate = new Date();
         } else {
+            console.error('❌ No users returned from API');
             state.usersData = [];
         }
+        
     } catch (error) {
-        console.error('Failed to load users:', error.message);
+        console.error('❌ Failed to load users:', error.message);
         state.usersData = [];
     }
 }
 
+function startUsersAutoRefresh() {
+    if (state.usersRefreshInterval) clearInterval(state.usersRefreshInterval);
+    
+    state.usersRefreshInterval = setInterval(() => {
+        if (state.isLoggedIn) loadLoginUsers(true);
+    }, 30000);
+}
+
 function handleLogin(event) {
     event.preventDefault();
+    
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value.trim();
     const loginError = document.getElementById('loginError');
     const loginBtn = document.getElementById('loginBtn');
     const loginLoading = document.getElementById('loginLoading');
-
+    
     loginBtn.style.display = 'none';
     loginLoading.style.display = 'flex';
     loginError.style.display = 'none';
-
+    
     if (!state.usersData || state.usersData.length === 0) {
         loginError.innerHTML = '<i class="fas fa-exclamation-circle"></i><span>No users available. Check connection.</span>';
         loginError.style.display = 'flex';
@@ -124,20 +95,23 @@ function handleLogin(event) {
         loginLoading.style.display = 'none';
         return;
     }
-
+    
     const user = state.usersData.find(u => 
         u.username.toString().toLowerCase() === username.toLowerCase() && 
         u.password.toString() === password
     );
-
+    
     if (user) {
         state.currentUser = user;
         state.isLoggedIn = true;
+        
         document.getElementById('loginOverlay').style.display = 'none';
         showUserInfo(user);
         initializeApp();
+        
+        console.log(`%c✅ Login: ${user.username} (${user.role})`, 'color: #6ee7b7');
     } else {
-        loginError.innerHTML = '<i class="fas fa-exclamation-circle"></i><span>Invalid username or password</span>';
+        loginError.innerHTML = '<i class="fas fa-exclamation-circle"></i><span>Invalid credentials</span>';
         loginError.style.display = 'flex';
         loginBtn.style.display = 'flex';
         loginLoading.style.display = 'none';
@@ -148,16 +122,14 @@ function showUserInfo(user) {
     const userInfo = document.getElementById('userInfo');
     const userNameDisplay = document.getElementById('userNameDisplay');
     const userRoleDisplay = document.getElementById('userRoleDisplay');
-    const roleDisplay = document.getElementById('roleDisplay');
-
+    
     userNameDisplay.textContent = user.username;
-
-    let roleLabel = user.role === 'supervisors' ? 'SUPERVISOR' : 
-                    user.role === 'shift_supervisor' ? 'SHIFT SUPERVISOR' : 'QC';
-    userRoleDisplay.textContent = roleLabel;
-    userRoleDisplay.className = 'user-role ' + user.role;
-
-    roleDisplay.textContent = roleLabel + ' Dashboard';
+    
+    const roleConfig = CONFIG.USER_MANAGEMENT.roles[user.role] || CONFIG.USER_MANAGEMENT.roles['qc'];
+    userRoleDisplay.textContent = roleConfig.label;
+    userRoleDisplay.className = `user-role ${user.role}`;
+    userRoleDisplay.style.color = roleConfig.color;
+    
     userInfo.style.display = 'flex';
 }
 
@@ -166,63 +138,107 @@ function handleLogout() {
     state.isLoggedIn = false;
     state.rawData = {};
     state.filteredData = {};
-    state.currentView = 'dashboard';
-    state.renderCache.clear();
-    state.dataCache.clear();
-
+    state.shiftSupervisorData = null;
+    
     if (state.usersRefreshInterval) {
         clearInterval(state.usersRefreshInterval);
         state.usersRefreshInterval = null;
     }
-
+    
     if (elements.shiftFilter) elements.shiftFilter.value = 'all';
     if (elements.locFilter) elements.locFilter.value = 'all';
     if (elements.searchInput) elements.searchInput.value = '';
     state.searchTerm = '';
-
-    document.getElementById('userInfo').style.display = 'none';
-    document.getElementById('loginLoading').style.display = 'none';
-    document.getElementById('loginBtn').style.display = 'flex';
-    document.getElementById('loginError').style.display = 'none';
-    document.getElementById('username').value = '';
-    document.getElementById('password').value = '';
-    document.getElementById('loginOverlay').style.display = 'flex';
-
-    hideAllViews();
+    
+    const userInfo = document.getElementById('userInfo');
+    if (userInfo) userInfo.style.display = 'none';
+    
+    ['loginLoading', 'loginBtn', 'loginError', 'usernameInput', 'passwordInput'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            if (id.includes('Loading')) el.style.display = 'none';
+            else if (id.includes('Btn')) el.style.display = 'flex';
+            else if (id.includes('Error')) el.style.display = 'none';
+            else el.value = '';
+        }
+    });
+    
+    const loginOverlay = document.getElementById('loginOverlay');
+    if (loginOverlay) loginOverlay.style.display = 'flex';
+    
     if (elements.contentArea) elements.contentArea.innerHTML = '';
+    
+    // Hide shift supervisor dashboard
+    const ssDashboard = document.getElementById('shiftSupervisorDashboard');
+    if (ssDashboard) ssDashboard.style.display = 'none';
 }
 
 /* ============================================
-   VIEW MANAGEMENT
+   ✅ UPDATED: Filter Data by User Permissions
    ============================================ */
-function hideAllViews() {
-    document.getElementById('shiftSupervisorView').style.display = 'none';
-    document.getElementById('supervisorView').style.display = 'none';
-    document.getElementById('qcView').style.display = 'none';
-    if (elements.contentArea) elements.contentArea.style.display = 'none';
-}
-
-function showView(viewName) {
-    hideAllViews();
-    state.currentView = viewName;
-
-    if (viewName === 'shift_supervisor') {
-        document.getElementById('shiftSupervisorView').style.display = 'block';
-        document.getElementById('controlsArea').style.display = 'none';
-    } else if (viewName === 'supervisor') {
-        document.getElementById('supervisorView').style.display = 'block';
-    } else if (viewName === 'qc') {
-        document.getElementById('qcView').style.display = 'block';
-    } else {
-        if (elements.contentArea) elements.contentArea.style.display = 'block';
+function filterDataByUser(data) {
+    if (!state.currentUser) return data;
+    
+    const role = state.currentUser.role;
+    const permission = state.currentUser.permission;
+    
+    // Admin & Supervisors with "all" see everything
+    if ((role === 'admin' || role === 'supervisors') && permission === 'all') {
+        return data;
     }
+    
+    // ✅ NEW: Shift Supervisor sees their shift only
+    if (role === 'shift_supervisor') {
+        const userShift = state.currentUser.shift;
+        if (userShift && data[userShift]) {
+            return { [userShift]: data[userShift] };
+        }
+        return data;
+    }
+    
+    // QC users see only their team
+    if (role === 'qc' || permission === 'only') {
+        const filteredData = {};
+        const userTeamName = state.currentUser.username;
+        
+        for (const [shift, locations] of Object.entries(data)) {
+            filteredData[shift] = {};
+            
+            for (const [location, teams] of Object.entries(locations)) {
+                filteredData[shift][location] = {};
+                
+                for (const [teamName, teamData] of Object.entries(teams)) {
+                    const teamBaseName = teamName.replace(/\s*\([A-Z]{1,3}\)\s*$/, '').trim();
+                    
+                    if (teamBaseName === userTeamName) {
+                        filteredData[shift][location][teamName] = teamData;
+                    }
+                }
+                
+                if (Object.keys(filteredData[shift][location]).length === 0) {
+                    delete filteredData[shift][location];
+                }
+            }
+            
+            if (Object.keys(filteredData[shift]).length === 0) {
+                delete filteredData[shift];
+            }
+        }
+        
+        return filteredData;
+    }
+    
+    return data;
 }
 
 /* ============================================
    INITIALIZATION
    ============================================ */
 async function initializeApp() {
-    console.log('%c🚀 Submit Tracker v3.0', 'color: #6ee7b7; font-size: 18px; font-weight: bold;');
+    console.log('%c🚀 Submit Tracker V3.0', 'color: #6ee7b7; font-size: 18px; font-weight: bold;');
+    
+    await loadLoginUsers();
+    startUsersAutoRefresh();
 
     // Cache DOM elements
     elements.contentArea = document.getElementById('contentArea');
@@ -238,38 +254,17 @@ async function initializeApp() {
 
     // Set default date
     elements.datePicker.value = new Date().toISOString().split('T')[0];
+
     updateStatusIndicator('loading');
 
-    // Route by role
-    const role = state.currentUser ? state.currentUser.role : '';
-
-    if (role === 'shift_supervisor') {
-        // Shift Supervisor: determine shift from username or default
-        state.currentShift = 'M'; // Default, can be enhanced
-        showView('shift_supervisor');
-        fetchShiftSupervisorData(true);
-    } else if (role === 'supervisors') {
-        showView('dashboard');
-        elements.contentArea.style.display = 'block';
-        fetchData(true);
-    } else if (role === 'Qc') {
-        showView('dashboard');
-        elements.contentArea.style.display = 'block';
-        fetchData(true);
-    } else {
-        showView('dashboard');
-        elements.contentArea.style.display = 'block';
-        fetchData(true);
+    // ✅ NEW: Check if user is Shift Supervisor and load their dashboard
+    if (state.currentUser && state.currentUser.role === 'shift_supervisor') {
+        fetchShiftSupervisorData();
     }
 
-    // Auto-refresh
-    setInterval(() => {
-        if (state.currentView === 'shift_supervisor') {
-            fetchShiftSupervisorData(false);
-        } else {
-            fetchData(false);
-        }
-    }, CONFIG.REFRESH_INTERVAL);
+    fetchData(true);
+
+    setInterval(() => fetchData(false), CONFIG.REFRESH_INTERVAL);
 
     // Keyboard shortcut
     document.addEventListener('keydown', (e) => {
@@ -277,30 +272,353 @@ async function initializeApp() {
             e.preventDefault();
             elements.searchInput.focus();
         }
+        // ESC to close modal
+        if (e.key === 'Escape') closeModal();
     });
-
-    // Disable ambient orbs on mobile
-    if (window.innerWidth < 768) {
-        document.getElementById('orb1').style.display = 'none';
-        document.getElementById('orb2').style.display = 'none';
-        document.getElementById('orb3').style.display = 'none';
-    }
-}
-
-function updateStatusIndicator(status) {
-    const { statusIndicator: indicator, statusDot: dot, statusText: text } = elements;
-    indicator.className = 'status-indicator ' + status;
-    dot.className = 'status-dot ' + status + '-dot';
-    const labels = {
-        live: 'LIVE - Connected',
-        error: 'CONNECTION ERROR',
-        loading: 'CONNECTING...'
-    };
-    text.textContent = labels[status] ?? 'CONNECTING...';
 }
 
 /* ============================================
-   DATA FETCHING — ROLE BASED
+   ✅ NEW: Fetch Shift Supervisor Data
+   ============================================ */
+async function fetchShiftSupervisorData() {
+    if (!state.currentUser || state.currentUser.role !== 'shift_supervisor') return;
+    
+    const dateParam = formatDateForAPI(elements.datePicker.value);
+    const userShift = state.currentUser.shift;
+    
+    if (!userShift) {
+        console.error('❌ No shift assigned to this supervisor');
+        return;
+    }
+    
+    try {
+        const apiUrl = `${CONFIG.API_URL}?action=shift_supervisor&date=${dateParam}&shift=${userShift}`;
+        
+        const response = await fetch(apiUrl, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            state.shiftSupervisorData = result;
+            renderShiftSupervisorDashboard(result);
+            
+            // Show the dashboard section
+            const ssSection = document.getElementById('shiftSupervisorDashboard');
+            if (ssSection) ssSection.style.display = 'block';
+        } else {
+            console.error('❌ Failed to load shift supervisor data:', result.error);
+        }
+        
+    } catch (error) {
+        console.error('❌ Error fetching shift supervisor data:', error);
+    }
+}
+
+/* ============================================
+   ✅ NEW: Render Shift Supervisor Dashboard
+   ============================================ */
+function renderShiftSupervisorDashboard(data) {
+    // Update summary cards
+    document.getElementById('ssTotalActive').textContent = data.summary.totalActiveUsers || 0;
+    document.getElementById('ssTotalSubmitted').textContent = data.summary.totalSubmitted || 0;
+    document.getElementById('ssTotalPending').textContent = data.summary.totalPending || 0;
+    document.getElementById('ssTotalAbsent').textContent = data.summary.totalAbsentUsers || 0;
+    
+    // Update shift badge
+    const shiftNames = { 'M': 'Morning', 'N': 'Night', 'ON': 'Overnight' };
+    document.getElementById('ssShiftBadge').textContent = `${shiftNames[data.shift] || data.shift} Shift`;
+    
+    // Render status breakdown
+    renderStatusBreakdown(data.statusBreakdown);
+    
+    // Render room breakdown
+    renderRoomBreakdown(data.roomBreakdown);
+    
+    // Render task type breakdown
+    renderTaskTypeBreakdown(data.taskTypeBreakdown);
+}
+
+function renderStatusBreakdown(statusBreakdown) {
+    const container = document.getElementById('ssStatusGrid');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    const statusLabels = {
+        'P': { label: 'Present', color: '#6ee7b7', icon: 'fa-check' },
+        'TP': { label: 'Training Partial', color: '#a5b4fc', icon: 'fa-graduation-cap' },
+        'PT': { label: 'Partial Training', color: '#fbbf24', icon: 'fa-clock' },
+        'T1': { label: 'Training 1', color: '#fb923c', icon: 'fa-book' },
+        'T2': { label: 'Training 2', color: '#fb923c', icon: 'fa-book' },
+        'T3': { label: 'Training 3', color: '#fb923c', icon: 'fa-book' },
+        'T4': { label: 'Training 4', color: '#fb923c', icon: 'fa-book' },
+        'T5': { label: 'Training 5', color: '#fb923c', icon: 'fa-book' },
+        '0': { label: 'Absent', color: '#fb7185', icon: 'fa-user-minus' },
+        'E': { label: 'Empty Device', color: '#ef4444', icon: 'fa-plug' }
+    };
+    
+    for (const [status, count] of Object.entries(statusBreakdown)) {
+        const config = statusLabels[status] || { label: status, color: '#94a3b8', icon: 'fa-question' };
+        
+        const card = document.createElement('div');
+        card.className = 'ss-status-card';
+        card.innerHTML = `
+            <div class="ss-status-icon" style="background: ${config.color}20; color: ${config.color};">
+                <i class="fas ${config.icon}"></i>
+            </div>
+            <div class="ss-status-info">
+                <span class="ss-status-count">${count}</span>
+                <span class="ss-status-label">${config.label}</span>
+            </div>
+        `;
+        container.appendChild(card);
+    }
+}
+
+function renderRoomBreakdown(roomBreakdown) {
+    const container = document.getElementById('ssRoomGrid');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    for (const [room, data] of Object.entries(roomBreakdown)) {
+        const percentage = data.count > 0 ? Math.round((data.submitted / data.count) * 100) : 0;
+        
+        const row = document.createElement('div');
+        row.className = 'ss-room-row';
+        row.onclick = () => showRoomDetails(room, data);
+        row.innerHTML = `
+            <div class="ss-room-name">
+                <i class="fas fa-door-open"></i> ${room}
+            </div>
+            <div class="ss-room-stats">
+                <div class="ss-room-stat submitted">
+                    <span class="stat-num">${data.submitted}</span>
+                    <span class="stat-label">Submitted</span>
+                </div>
+                <div class="ss-room-stat pending">
+                    <span class="stat-num">${data.pending}</span>
+                    <span class="stat-label">Pending</span>
+                </div>
+                <div class="ss-room-stat total">
+                    <span class="stat-num">${data.count}</span>
+                    <span class="stat-label">Total</span>
+                </div>
+            </div>
+            <div class="ss-room-progress">
+                <div class="progress-bar" style="width: ${percentage}%"></div>
+                <span class="progress-text">${percentage}%</span>
+            </div>
+        `;
+        container.appendChild(row);
+    }
+}
+
+function renderTaskTypeBreakdown(taskTypeBreakdown) {
+    const container = document.getElementById('ssTaskGrid');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    const taskIcons = {
+        'LIDAR': 'fa-satellite',
+        'FP QA': 'fa-check-double',
+        'Lane Line': 'fa-road',
+        'FP': 'fa-edit',
+        'QA': 'fa-clipboard-check'
+    };
+    
+    for (const [taskType, data] of Object.entries(taskTypeBreakdown)) {
+        const percentage = data.count > 0 ? Math.round((data.submitted / data.count) * 100) : 0;
+        const icon = taskIcons[taskType] || 'fa-tasks';
+        
+        const card = document.createElement('div');
+        card.className = 'ss-task-card';
+        card.onclick = () => showTaskTypeDetails(taskType, data);
+        card.innerHTML = `
+            <div class="ss-task-icon">
+                <i class="fas ${icon}"></i>
+            </div>
+            <div class="ss-task-info">
+                <span class="ss-task-name">${taskType}</span>
+                <div class="ss-task-stats">
+                    <span class="submitted">${data.submitted} done</span>
+                    <span class="pending">${data.pending} pending</span>
+                </div>
+            </div>
+            <div class="ss-task-progress">
+                <div class="progress-ring-small" data-progress="${percentage}">
+                    <svg viewBox="0 0 36 36">
+                        <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                              fill="none" stroke="#334155" stroke-width="3"/>
+                        <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                              fill="none" stroke="#6ee7b7" stroke-width="3"
+                              stroke-dasharray="${percentage}, 100"/>
+                    </svg>
+                    <span>${percentage}%</span>
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    }
+}
+
+/* ============================================
+   ✅ NEW: Modal Functions for Breakdown Details
+   ============================================ */
+function showBreakdown(type) {
+    const modal = document.getElementById('breakdownModal');
+    const title = document.getElementById('modalTitle');
+    const body = document.getElementById('modalBody');
+    
+    if (!state.shiftSupervisorData) return;
+    
+    let content = '';
+    
+    switch(type) {
+        case 'activeUsers':
+            title.innerHTML = '<i class="fas fa-users"></i> Active Users Breakdown';
+            content = generateActiveUsersBreakdownHTML(state.shiftSupervisorData.roomBreakdown);
+            break;
+        case 'submitted':
+            title.innerHTML = '<i class="fas fa-check-circle"></i> Submitted Tasks Breakdown';
+            content = generateSubmittedBreakdownHTML(state.shiftSupervisorData.taskTypeBreakdown);
+            break;
+        case 'pending':
+            title.innerHTML = '<i class="fas fa-clock"></i> Pending Tasks Breakdown';
+            content = generatePendingBreakdownHTML(state.shiftSupervisorData.roomBreakdown);
+            break;
+    }
+    
+    body.innerHTML = content;
+    modal.style.display = 'flex';
+}
+
+function showRoomDetails(roomName, roomData) {
+    const modal = document.getElementById('breakdownModal');
+    const title = document.getElementById('modalTitle');
+    const body = document.getElementById('modalBody');
+    
+    title.innerHTML = `<i class="fas fa-door-open"></i> ${roomName} - Details`;
+    
+    body.innerHTML = `
+        <div class="breakdown-detail">
+            <div class="detail-header">
+                <div class="detail-stat">
+                    <span class="detail-value">${roomData.count}</span>
+                    <span class="detail-label">Total Users</span>
+                </div>
+                <div class="detail-stat submitted">
+                    <span class="detail-value">${roomData.submitted}</span>
+                    <span class="detail-label">Submitted</span>
+                </div>
+                <div class="detail-stat pending">
+                    <span class="detail-value">${roomData.pending}</span>
+                    <span class="detail-label">Pending</span>
+                </div>
+            </div>
+            <div class="completion-rate">
+                <label>Completion Rate:</label>
+                <div class="progress-bar-large">
+                    <div class="fill" style="width: ${roomData.count > 0 ? Math.round((roomData.submitted/roomData.count)*100) : 0}%"></div>
+                </div>
+                <span class="rate-text">${roomData.count > 0 ? Math.round((roomData.submitted/roomData.count)*100) : 0}%</span>
+            </div>
+        </div>
+    `;
+    
+    modal.style.display = 'flex';
+}
+
+function showTaskTypeDetails(taskType, taskData) {
+    const modal = document.getElementById('breakdownModal');
+    const title = document.getElementById('modalTitle');
+    const body = document.getElementById('modalBody');
+    
+    title.innerHTML = `<i class="fas fa-tasks"></i> ${taskType} - Task Breakdown`;
+    
+    body.innerHTML = `
+        <div class="breakdown-detail">
+            <div class="detail-header">
+                <div class="detail-stat">
+                    <span class="detail-value">${taskData.count}</span>
+                    <span class="detail-label">Total Tasks</span>
+                </div>
+                <div class="detail-stat submitted">
+                    <span class="detail-value">${taskData.submitted}</span>
+                    <span class="detail-label">Completed</span>
+                </div>
+                <div class="detail-stat pending">
+                    <span class="detail-value">${taskData.pending}</span>
+                    <span class="detail-label">In Progress</span>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    modal.style.display = 'flex';
+}
+
+function closeModal() {
+    const modal = document.getElementById('breakdownModal');
+    if (modal) modal.style.display = 'none';
+}
+
+// Helper functions for generating HTML
+function generateActiveUsersBreakdownHTML(roomBreakdown) {
+    let html = '<div class="breakdown-grid">';
+    for (const [room, data] of Object.entries(roomBreakdown)) {
+        html += `
+            <div class="breakdown-item">
+                <h4><i class="fas fa-door-open"></i> ${room}</h4>
+                <p>Total: <strong>${data.count}</strong></p>
+                <p>Submitted: <strong class="submitted">${data.submitted}</strong></p>
+                <p>Pending: <strong class="pending">${data.pending}</strong></p>
+            </div>
+        `;
+    }
+    html += '</div>';
+    return html;
+}
+
+function generateSubmittedBreakdownHTML(taskTypeBreakdown) {
+    let html = '<div class="breakdown-grid">';
+    for (const [task, data] of Object.entries(taskTypeBreakdown)) {
+        html += `
+            <div class="breakdown-item">
+                <h4><i class="fas fa-tasks"></i> ${task}</h4>
+                <p>Completed: <strong class="submitted">${data.submitted}</strong></p>
+                <p>Pending: <strong class="pending">${data.pending}</strong></p>
+            </div>
+        `;
+    }
+    html += '</div>';
+    return html;
+}
+
+function generatePendingBreakdownHTML(roomBreakdown) {
+    let html = '<div class="breakdown-grid">';
+    for (const [room, data] of Object.entries(roomBreakdown)) {
+        if (data.pending > 0) {
+            html += `
+                <div class="breakdown-item warning">
+                    <h4><i class="fas fa-exclamation-triangle"></i> ${room}</h4>
+                    <p>Pending Users: <strong class="pending">${data.pending}</strong></p>
+                </div>
+            `;
+        }
+    }
+    html += '</div>';
+    return html;
+}
+
+/* ============================================
+   DATA FETCHING (Optimized - No Demo Fallback)
    ============================================ */
 async function fetchData(showLoader = false, isManual = false) {
     if (state.isLoading && !isManual) return;
@@ -313,20 +631,46 @@ async function fetchData(showLoader = false, isManual = false) {
         state.isLoading = true;
         if (showLoader || isManual) showLoadingState(true);
 
-        const json = await fetchWithFallback(fetchUrl);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT);
+
+        const response = await fetch(fetchUrl, {
+            signal: controller.signal,
+            mode: 'cors',
+            headers: { 'Accept': 'application/json' }
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+        let json;
+        try {
+            json = await response.json();
+        } catch (parseError) {
+            throw new Error('Invalid JSON response from server');
+        }
+
         const newData = json.data || {};
 
         if (Object.keys(newData).length === 0) {
-            throw new Error('No data available for this date');
+            // ❌ NO MORE DEMO FALLBACK - Show error instead
+            throw new Error('No data available for this date. Please check the source sheet.');
         }
 
         state.rawData = newData;
         state.filteredData = filterDataByUser(state.rawData);
-        updateStatusIndicator('live');
+        
+        // ✅ Also refresh shift supervisor data if applicable
+        if (state.currentUser && state.currentUser.role === 'shift_supervisor') {
+            fetchShiftSupervisorData();
+        }
 
         const newDataHash = generateDataHash(state.filteredData);
+
         if (newDataHash !== state.lastDataHash) {
             state.lastDataHash = newDataHash;
+
             if (state.isFirstLoad || isManual) {
                 updateFilters();
                 renderData();
@@ -339,29 +683,33 @@ async function fetchData(showLoader = false, isManual = false) {
         } else {
             if (showLoader || isManual) showLoadingState(false);
         }
+
+        updateStatusIndicator('live');
         state.lastError = null;
+        state.lastFetchTime = new Date();
 
     } catch (error) {
-        console.error('Fetch Error:', error.message);
+        console.error('❌ Fetch Error:', error.message);
         state.lastError = error.message;
         updateStatusIndicator('error');
 
         let errorTitle = 'Connection Error';
         let errorDetails = error.message;
+        let is404Error = false;
 
         if (error.name === 'AbortError') {
             errorTitle = 'Request Timeout';
-            errorDetails = 'Server took too long to respond.';
+            errorDetails = `Server took too long (> ${CONFIG.REQUEST_TIMEOUT/1000}s)`;
         } else if (error.message.includes('404')) {
-            errorTitle = 'API Not Found';
-            errorDetails = 'The API URL does not exist.';
+            errorTitle = 'API Not Found (404)';
+            is404Error = true;
         } else if (error.message.includes('Failed to fetch')) {
             errorTitle = 'Network Error';
-            errorDetails = 'Cannot connect to the server.';
+            errorDetails = 'Check your internet connection';
         }
 
         if (showLoader || isManual || state.isFirstLoad) {
-            showErrorState(errorTitle, errorDetails, error);
+            showErrorState(errorTitle, errorDetails, error, is404Error);
             state.isFirstLoad = false;
         }
     } finally {
@@ -369,421 +717,297 @@ async function fetchData(showLoader = false, isManual = false) {
     }
 }
 
-async function fetchShiftSupervisorData(showLoader = false) {
-    if (state.isLoading && !showLoader) return;
-
-    const apiUrl = state.customApiUrl || CONFIG.API_URL;
-    const date = formatDateForAPI(elements.datePicker.value);
-    const shift = state.currentShift;
-    const fetchUrl = `${apiUrl}?date=${date}&role=shift_supervisor&shift=${shift}`;
-
-    try {
-        state.isLoading = true;
-        if (showLoader) showLoadingState(true);
-
-        const json = await fetchWithFallback(fetchUrl);
-
-        if (json.data) {
-            state.rawData = json.data;
-            updateStatusIndicator('live');
-            renderShiftSupervisorView(json.data);
-        }
-        state.lastError = null;
-
-    } catch (error) {
-        console.error('Shift Supervisor Fetch Error:', error.message);
-        state.lastError = error.message;
-        updateStatusIndicator('error');
-        if (showLoader) {
-            showErrorState('Connection Error', error.message, error);
-        }
-    } finally {
-        state.isLoading = false;
-        if (showLoader) showLoadingState(false);
-    }
-}
-
-async function fetchSupervisorRoomData(location) {
-    const apiUrl = state.customApiUrl || CONFIG.API_URL;
-    const date = formatDateForAPI(elements.datePicker.value);
-    const fetchUrl = `${apiUrl}?date=${date}&role=supervisor&location=${encodeURIComponent(location)}`;
-
-    try {
-        const json = await fetchWithFallback(fetchUrl);
-        if (json.data) renderSupervisorView(json.data);
-    } catch (error) {
-        console.error('Supervisor Fetch Error:', error.message);
-    }
-}
-
-async function fetchQCTeamData(teamName) {
-    const apiUrl = state.customApiUrl || CONFIG.API_URL;
-    const date = formatDateForAPI(elements.datePicker.value);
-    const fetchUrl = `${apiUrl}?date=${date}&role=qc&username=${encodeURIComponent(teamName)}`;
-
-    try {
-        const json = await fetchWithFallback(fetchUrl);
-        if (json.data) renderQCView(json.data);
-    } catch (error) {
-        console.error('QC Fetch Error:', error.message);
-    }
-}
-
+/** Manual refresh triggered by date picker or button */
 function manualRefresh() {
-    if (state.currentView === 'shift_supervisor') {
-        fetchShiftSupervisorData(true);
-    } else {
-        fetchData(true, true);
+    fetchData(true, true);
+    
+    // Also refresh shift supervisor data
+    if (state.currentUser && state.currentUser.role === 'shift_supervisor') {
+        fetchShiftSupervisorData();
     }
+}
+
+/** Use custom API URL from error state input */
+function useCustomApiUrl() {
+    const input = document.getElementById('customApiUrlInput');
+    const newUrl = input.value.trim();
+
+    if (!newUrl) { alert('Please enter a valid API URL'); return; }
+
+    state.customApiUrl = newUrl;
+    manualRefresh();
 }
 
 /* ============================================
-   SHIFT SUPERVISOR VIEW RENDERER
+   STATE DISPLAY HELPERS
    ============================================ */
-function renderShiftSupervisorView(data) {
-    const container = document.getElementById('ssSummaryGrid');
-    const breakdownContainer = document.getElementById('ssBreakdownContainer');
-    const shiftBadge = document.getElementById('ssShiftBadge');
-    const dateEl = document.getElementById('ssDate');
-
-    // Update header
-    const shiftInfo = CONFIG.SHIFTS[data.shift] || CONFIG.SHIFTS['M'];
-    shiftBadge.innerHTML = `<i class="fas ${shiftInfo.icon}"></i><span>${shiftInfo.label} Shift</span>`;
-    shiftBadge.style.borderColor = shiftInfo.color;
-    shiftBadge.style.color = shiftInfo.color;
-    dateEl.textContent = data.date;
-
-    // Summary Cards
-    const activePct = data.activeUsers.total > 0 ? 100 : 0;
-    const submitPct = data.activeUsers.total > 0 ? Math.round((data.submittedTasks.total / data.activeUsers.total) * 100) : 0;
-    const trainingTotal = Object.values(data.training).reduce((a, b) => a + b, 0);
-
-    container.innerHTML = `
-        <div class="ss-card active-card" onclick="toggleBreakdown('active')">
-            <div class="ss-card-icon"><i class="fas fa-users"></i></div>
-            <div class="ss-card-info">
-                <span class="ss-card-label">Total Active Users</span>
-                <span class="ss-card-value">${data.activeUsers.total}</span>
-                <span class="ss-card-sub">Present & Productive</span>
+function showLoadingState(show) {
+    if (!show) return;
+    elements.contentArea.innerHTML = `
+        <div id="loader">
+            <div class="loader-spinner">
+                <div class="spinner-ring"></div>
+                <div class="loader-text">
+                    Loading data<span class="loader-dots"><span>.</span><span>.</span><span>.</span></span>
+                </div>
             </div>
-            <div class="ss-card-arrow"><i class="fas fa-chevron-right"></i></div>
-        </div>
-
-        <div class="ss-card submit-card" onclick="toggleBreakdown('submitted')">
-            <div class="ss-card-icon"><i class="fas fa-check-double"></i></div>
-            <div class="ss-card-info">
-                <span class="ss-card-label">Total Submitted Tasks</span>
-                <span class="ss-card-value">${data.submittedTasks.total}</span>
-                <span class="ss-card-sub">${submitPct}% of active users</span>
-            </div>
-            <div class="ss-card-arrow"><i class="fas fa-chevron-right"></i></div>
-        </div>
-
-        <div class="ss-card training-card" onclick="toggleBreakdown('training')">
-            <div class="ss-card-icon"><i class="fas fa-graduation-cap"></i></div>
-            <div class="ss-card-info">
-                <span class="ss-card-label">Training</span>
-                <span class="ss-card-value">${trainingTotal}</span>
-                <span class="ss-card-sub">T1-T5 Breakdown</span>
-            </div>
-            <div class="ss-card-arrow"><i class="fas fa-chevron-right"></i></div>
-        </div>
-
-        <div class="ss-card pending-card" onclick="toggleBreakdown('pending')">
-            <div class="ss-card-icon"><i class="fas fa-clock"></i></div>
-            <div class="ss-card-info">
-                <span class="ss-card-label">Not Submitted</span>
-                <span class="ss-card-value">${data.notSubmitted.total}</span>
-                <span class="ss-card-sub">Pending submissions</span>
-            </div>
-            <div class="ss-card-arrow"><i class="fas fa-chevron-right"></i></div>
         </div>
     `;
-
-    // Store data for breakdown toggles
-    state.ssData = data;
-
-    // Initial breakdown: show active users by room
-    renderSSBreakdown('active');
 }
 
-function toggleBreakdown(type) {
-    renderSSBreakdown(type);
-}
+function showErrorState(title, message, error, is404 = false) {
+    const timestamp = new Date().toLocaleTimeString();
+    const currentUrl = state.customApiUrl || CONFIG.API_URL;
 
-function renderSSBreakdown(type) {
-    const container = document.getElementById('ssBreakdownContainer');
-    const data = state.ssData;
-    if (!data) return;
-
-    let html = '';
-
-    if (type === 'active') {
-        html = `
-            <div class="breakdown-section">
-                <h3><i class="fas fa-users"></i> Active Users Breakdown by Room</h3>
-                <div class="breakdown-grid">
-                    ${Object.entries(data.activeUsers.byRoom).map(([room, count]) => `
-                        <div class="breakdown-item">
-                            <span class="breakdown-name">${room}</span>
-                            <span class="breakdown-value">${count}</span>
-                            <div class="breakdown-bar">
-                                <div class="breakdown-fill" style="width: ${data.activeUsers.total > 0 ? (count / data.activeUsers.total * 100) : 0}%"></div>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-                <div class="breakdown-total">
-                    <span>Total Active: <strong>${data.activeUsers.total}</strong></span>
-                </div>
+    let solutionHTML = '';
+    if (is404) {
+        solutionHTML = `
+            <div class="solution-box">
+                <div class="solution-title"><i class="fas fa-lightbulb"></i> How to Fix This Error</div>
+                <ul class="solution-list">
+                    <li><strong>Check the Google Apps Script URL</strong> — Make sure it's correct</li>
+                    <li><strong>Redeploy the script</strong> — Deploy → Manage deployments → Edit → Redeploy</li>
+                    <li><strong>Check permissions</strong> — Ensure "Anyone" can access</li>
+                    <li><strong>Use a working URL below</strong> — Enter a valid API URL</li>
+                </ul>
             </div>
-        `;
-    } else if (type === 'submitted') {
-        html = `
-            <div class="breakdown-section">
-                <h3><i class="fas fa-tasks"></i> Submitted Tasks Breakdown</h3>
-                ${Object.entries(data.submittedTasks.byType).map(([typeName, typeData]) => {
-                    if (typeData.total === 0) return '';
-                    const typeInfo = CONFIG.TASK_TYPES[typeName] || CONFIG.TASK_TYPES['Other'];
-                    return `
-                        <div class="task-type-block">
-                            <div class="task-type-header" style="color: ${typeInfo.color}">
-                                <i class="fas ${typeInfo.icon}"></i>
-                                <span>${typeInfo.label}</span>
-                                <span class="task-type-total">${typeData.total}</span>
-                            </div>
-                            <div class="task-status-grid">
-                                <div class="task-status-item fp">
-                                    <span class="status-label">First Pass</span>
-                                    <span class="status-value">${typeData.FP}</span>
-                                </div>
-                                <div class="task-status-item qa">
-                                    <span class="status-label">QA</span>
-                                    <span class="status-value">${typeData.QA}</span>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }).join('')}
-                <div class="breakdown-total">
-                    <span>Total Submitted: <strong>${data.submittedTasks.total}</strong></span>
-                </div>
-            </div>
-        `;
-    } else if (type === 'training') {
-        html = `
-            <div class="breakdown-section">
-                <h3><i class="fas fa-graduation-cap"></i> Training Breakdown</h3>
-                <div class="training-grid">
-                    ${Object.entries(data.training).map(([tKey, count]) => {
-                        const tInfo = CONFIG.TRAINING_TYPES[tKey] || { label: tKey, color: '#ccc' };
-                        return `
-                            <div class="training-item" style="border-color: ${tInfo.color}">
-                                <span class="training-label" style="color: ${tInfo.color}">${tInfo.label}</span>
-                                <span class="training-value">${count}</span>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            </div>
-        `;
-    } else if (type === 'pending') {
-        html = `
-            <div class="breakdown-section">
-                <h3><i class="fas fa-clock"></i> Not Submitted Breakdown by Room</h3>
-                <div class="breakdown-grid">
-                    ${Object.entries(data.notSubmitted.byRoom).map(([room, count]) => `
-                        <div class="breakdown-item pending-item">
-                            <span class="breakdown-name">${room}</span>
-                            <span class="breakdown-value">${count}</span>
-                            <div class="breakdown-bar">
-                                <div class="breakdown-fill pending-fill" style="width: ${data.notSubmitted.total > 0 ? (count / data.notSubmitted.total * 100) : 0}%"></div>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-                <div class="breakdown-total">
-                    <span>Total Pending: <strong>${data.notSubmitted.total}</strong></span>
-                </div>
+            <div class="api-url-input-group">
+                <label class="api-url-label" for="customApiUrlInput">
+                    <i class="fas fa-link"></i> Enter New API URL
+                </label>
+                <input type="text" id="customApiUrlInput" class="api-url-input"
+                       placeholder="https://script.google.com/macros/s/YOUR_ID/exec">
+                <button class="btn btn-success" onclick="useCustomApiUrl()" style="margin-top: 10px;">
+                    <i class="fas fa-plug"></i> Connect
+                </button>
             </div>
         `;
     }
 
-    container.innerHTML = html;
+    elements.contentArea.innerHTML = `
+        <div class="error-state">
+            <div class="error-header">
+                <div class="error-icon">
+                    <i class="fas ${is404 ? 'fa-unlink' : 'fa-exclamation-triangle'}"></i>
+                </div>
+                <div class="error-title-section">
+                    <div class="error-code">${is404 ? '404' : '⚠'}</div>
+                    <div class="error-title">${title}</div>
+                    <div class="error-subtitle">${message}</div>
+                </div>
+            </div>
+            <div class="error-message">
+                <strong>Error:</strong> ${message}<br><br>
+                <strong>Solution:</strong> Check your connection and try again.
+            </div>
+            <div class="error-actions">
+                <button class="btn btn-primary" onclick="manualRefresh()">
+                    <i class="fas fa-redo"></i> Try Again
+                </button>
+            </div>
+            ${solutionHTML}
+            <div class="debug-info">
+                <strong>Technical Details:</strong><br>
+                Time: ${timestamp}<br>
+                Error: ${error?.message ?? 'N/A'}<br>
+                URL: ${currentUrl.substring(0, 60)}...
+            </div>
+        </div>
+    `;
 }
 
-/* ============================================
-   SUPERVISOR ROOM VIEW RENDERER
-   ============================================ */
-function renderSupervisorView(data) {
-    document.getElementById('svLocationTitle').textContent = data.location + ' Breakdown';
-    document.getElementById('svTotals').innerHTML = `
-        <span class="sv-total-item submitted"><i class="fas fa-check"></i> ${data.totals.submitted}</span>
-        <span class="sv-total-item pending"><i class="fas fa-clock"></i> ${data.totals.notSubmitted}</span>
-        <span class="sv-total-item total"><i class="fas fa-users"></i> ${data.totals.total}</span>
-    `;
-
-    const container = document.getElementById('svTeamsContainer');
-    let html = '';
-
-    for (const [teamName, teamData] of Object.entries(data.teams)) {
-        const teamSubmitted = teamData.submitted.length;
-        const teamPending = teamData.notSubmitted.length;
-        const teamTotal = teamSubmitted + teamPending;
-        const teamPct = teamTotal > 0 ? Math.round((teamSubmitted / teamTotal) * 100) : 0;
-
-        html += `
-            <div class="sv-team-card">
-                <div class="sv-team-header">
-                    <span class="sv-team-name"><i class="fas fa-user-tie"></i> ${teamName}</span>
-                    <div class="sv-team-badges">
-                        <span class="sv-badge done">Done: ${teamSubmitted}</span>
-                        <span class="sv-badge pending">Pending: ${teamPending}</span>
-                    </div>
-                </div>
-                <div class="sv-team-progress">
-                    <div class="sv-progress-bar">
-                        <div class="sv-progress-fill" style="width: ${teamPct}%"></div>
-                    </div>
-                    <span class="sv-progress-text">${teamPct}% Complete</span>
-                </div>
-                <div class="sv-team-users">
-                    ${teamData.submitted.map(u => `
-                        <div class="sv-user submitted-user">
-                            <span class="sv-user-email">${escapeHTML(u.email)}</span>
-                            <span class="sv-user-meta">${u.taskType} | ${u.status}</span>
-                        </div>
-                    `).join('')}
-                    ${teamData.notSubmitted.map(u => `
-                        <div class="sv-user pending-user">
-                            <span class="sv-user-email">${escapeHTML(u.email)}</span>
-                            <span class="sv-user-meta">Pending</span>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        `;
-    }
-
-    container.innerHTML = html;
+function showSilentUpdateNotification() {
+    if (!elements.silentUpdate) return;
+    elements.silentUpdate.classList.add('show');
+    setTimeout(() => elements.silentUpdate.classList.remove('show'), 2500);
 }
 
-/* ============================================
-   QC TEAM VIEW RENDERER
-   ============================================ */
-function renderQCView(data) {
-    document.getElementById('qcTeamTitle').textContent = data.team + ' — QC Breakdown';
-    document.getElementById('qcTotals').innerHTML = `
-        <span class="qc-total-item"><i class="fas fa-check-double"></i> Total: ${data.totals.submitted}</span>
-        <span class="qc-total-item fp"><i class="fas fa-check"></i> FP: ${data.totals.byStatus.FP}</span>
-        <span class="qc-total-item qa"><i class="fas fa-search"></i> QA: ${data.totals.byStatus.QA}</span>
-    `;
-
-    // Task type breakdown
-    const breakdownEl = document.getElementById('qcTaskBreakdown');
-    let breakdownHtml = '<div class="qc-breakdown-grid">';
-    for (const [typeName, typeData] of Object.entries(data.totals.byTaskType)) {
-        if (typeData.total === 0) continue;
-        const typeInfo = CONFIG.TASK_TYPES[typeName] || CONFIG.TASK_TYPES['Other'];
-        breakdownHtml += `
-            <div class="qc-breakdown-card" style="border-color: ${typeInfo.color}">
-                <div class="qc-breakdown-header" style="color: ${typeInfo.color}">
-                    <i class="fas ${typeInfo.icon}"></i>
-                    <span>${typeInfo.label}</span>
-                </div>
-                <div class="qc-breakdown-stats">
-                    <div class="qc-stat"><span class="qc-stat-label">FP</span><span class="qc-stat-value">${typeData.FP}</span></div>
-                    <div class="qc-stat"><span class="qc-stat-label">QA</span><span class="qc-stat-value">${typeData.QA}</span></div>
-                    <div class="qc-stat"><span class="qc-stat-label">Total</span><span class="qc-stat-value">${typeData.total}</span></div>
-                </div>
-            </div>
-        `;
-    }
-    breakdownHtml += '</div>';
-    breakdownEl.innerHTML = breakdownHtml;
-
-    // Users list
-    const usersEl = document.getElementById('qcUsersContainer');
-    let usersHtml = '<div class="qc-users-grid">';
-    data.submittedUsers.forEach((u, idx) => {
-        const statusInfo = CONFIG.STATUS_TYPES[u.status] || { color: '#ccc', icon: 'fa-circle' };
-        usersHtml += `
-            <div class="qc-user-card" style="animation-delay: ${idx * 40}ms">
-                <div class="qc-user-status" style="color: ${statusInfo.color}">
-                    <i class="fas ${statusInfo.icon}"></i>
-                    <span>${u.status}</span>
-                </div>
-                <div class="qc-user-info">
-                    <span class="qc-user-email">${escapeHTML(u.email)}</span>
-                    <span class="qc-user-name">${escapeHTML(u.name)}</span>
-                </div>
-                <div class="qc-user-meta">
-                    <span class="qc-user-type">${u.taskType}</span>
-                    <span class="qc-user-pc"><i class="fas fa-desktop"></i> ${u.pc}</span>
-                </div>
-            </div>
-        `;
+function smartUpdateUI() {
+    document.querySelectorAll('.stat-value').forEach(el => {
+        el.style.transform = 'scale(1.1)';
+        setTimeout(() => (el.style.transform = 'scale(1)'), 200);
     });
-    usersHtml += '</div>';
-    usersEl.innerHTML = usersHtml;
+    document.querySelectorAll('.ring-progress').forEach(el => {
+        el.style.filter = 'drop-shadow(0 0 15px var(--accent-emerald-glow))';
+        setTimeout(() => (el.style.filter = 'drop-shadow(0 0 10px var(--accent-emerald-glow))'), 500);
+    });
+    
+    // Also update shift supervisor numbers smoothly
+    if (state.shiftSupervisorData) {
+        animateValue('ssTotalActive', state.shiftSupervisorData.summary.totalActiveUsers);
+        animateValue('ssTotalSubmitted', state.shiftSupervisorData.summary.totalSubmitted);
+        animateValue('ssTotalPending', state.shiftSupervisorData.summary.totalPending);
+    }
+}
+
+// Helper to animate number changes
+function animateValue(elementId, endValue) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    
+    const startValue = parseInt(el.textContent) || 0;
+    const duration = 500;
+    const startTime = performance.now();
+    
+    function update(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        const currentValue = Math.floor(startValue + (endValue - startValue) * progress);
+        el.textContent = currentValue;
+        
+        if (progress < 1) requestAnimationFrame(update);
+    }
+    
+    requestAnimationFrame(update);
 }
 
 /* ============================================
-   DEFAULT DASHBOARD RENDERER (Optimized)
+   UTILITY HELPERS
    ============================================ */
-function filterDataByUser(data) {
-    if (!state.currentUser) return data;
-
-    if (state.currentUser.role === 'supervisors' && state.currentUser.permission === 'all') {
-        return data;
-    }
-
-    if (state.currentUser.role === 'Qc' || state.currentUser.permission === 'only') {
-        const filteredData = {};
-        const userTeamName = state.currentUser.username;
-
-        for (const [shift, locations] of Object.entries(data)) {
-            filteredData[shift] = {};
-            for (const [location, teams] of Object.entries(locations)) {
-                filteredData[shift][location] = {};
-                for (const [teamName, teamData] of Object.entries(teams)) {
-                    const teamBaseName = teamName.replace(/\s*\([A-Z]{1,3}\)\s*$/, '').trim();
-                    if (teamBaseName === userTeamName) {
-                        filteredData[shift][location][teamName] = teamData;
-                    }
-                }
-                if (Object.keys(filteredData[shift][location]).length === 0) {
-                    delete filteredData[shift][location];
-                }
-            }
-            if (Object.keys(filteredData[shift]).length === 0) {
-                delete filteredData[shift];
-            }
-        }
-        return filteredData;
-    }
-
-    return data;
+function formatDateForAPI(dateString) {
+    return dateString.split('-').reverse().join('-');
 }
 
+function generateDataHash(data) {
+    let hash = '';
+    Object.keys(data).forEach(shift => {
+        Object.keys(data[shift]).forEach(loc => {
+            Object.values(data[shift][loc]).forEach(team => {
+                hash += `${team.submitted.length}-${team.notSubmitted.length}`;
+            });
+        });
+    });
+    return hash;
+}
+
+function escapeHTML(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function generateCardID(shift, locName, tlName) {
+    return `card-${shift}-${locName}-${tlName}`.replace(/\s+/g, '-');
+}
+
+/* ============================================
+   FILTER MANAGEMENT
+   ============================================ */
+function updateFilters() {
+    const shifts = new Set();
+    const locations = new Set();
+
+    const dataToUse = state.filteredData && Object.keys(state.filteredData).length > 0 
+        ? state.filteredData 
+        : state.rawData;
+
+    Object.keys(dataToUse).forEach(shift => {
+        shifts.add(shift);
+        Object.keys(dataToUse[shift]).forEach(loc => locations.add(loc));
+    });
+
+    Object.keys(CONFIG.LOCATION_GROUPS).forEach(groupName => locations.add(groupName));
+
+    const currentShift = elements.shiftFilter.value;
+    const currentLoc = elements.locFilter.value;
+
+    elements.shiftFilter.innerHTML = '<option value="all">All Shifts</option>';
+    Array.from(shifts).sort().forEach(shift => {
+        const opt = document.createElement('option');
+        opt.value = shift;
+        opt.textContent = `Shift: ${shift}`;
+        if (shift === currentShift) opt.selected = true;
+        elements.shiftFilter.appendChild(opt);
+    });
+
+    elements.locFilter.innerHTML = '<option value="all">All Locations</option>';
+
+    Object.keys(CONFIG.LOCATION_GROUPS).sort().forEach(groupName => {
+        const opt = document.createElement('option');
+        opt.value = groupName;
+        opt.textContent = `📍 ${groupName}`;
+        opt.style.fontWeight = 'bold';
+        if (groupName === currentLoc) opt.selected = true;
+        elements.locFilter.appendChild(opt);
+    });
+
+    const groupedLocs = new Set(Object.values(CONFIG.LOCATION_GROUPS).flat());
+    Array.from(locations).filter(loc =>
+        !groupedLocs.has(loc) && !Object.keys(CONFIG.LOCATION_GROUPS).includes(loc)
+    ).sort().forEach(loc => {
+        const opt = document.createElement('option');
+        opt.value = loc;
+        opt.textContent = loc;
+        if (loc === currentLoc) opt.selected = true;
+        elements.locFilter.appendChild(opt);
+    });
+}
+
+function getGroupLocations(groupName) {
+    return CONFIG.LOCATION_GROUPS[groupName] || [];
+}
+
+/* ============================================
+   SEARCH (with Debounce)
+   ============================================ */
+let searchTimeout;
+function handleSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        state.searchTerm = elements.searchInput.value.toLowerCase().trim();
+        renderData();
+    }, CONFIG.UI.debounceDelay || 300); // Debounce delay
+}
+
+function matchesSearch(email, pc) {
+    if (!state.searchTerm) return true;
+    return (
+        email.toLowerCase().includes(state.searchTerm) ||
+        String(pc).toLowerCase().includes(state.searchTerm)
+    );
+}
+
+/* ============================================
+   ACCORDION TOGGLE
+   ============================================ */
+function toggleTeam(tlID) {
+    const card = document.getElementById(tlID);
+    if (!card) return;
+
+    if (card.classList.contains('active')) {
+        card.classList.remove('active');
+        state.openTeams.delete(tlID);
+    } else {
+        card.classList.add('active');
+        state.openTeams.add(tlID);
+    }
+}
+
+/* ============================================
+   RENDERING (Optimized)
+   ============================================ */
 function renderData() {
     const selectedShift = elements.shiftFilter.value;
     const selectedLocation = elements.locFilter.value;
+
     const dataToRender = state.filteredData && Object.keys(state.filteredData).length > 0 
-        ? state.filteredData : state.rawData;
+        ? state.filteredData 
+        : state.rawData;
+
+    elements.contentArea.innerHTML = '';
 
     if (Object.keys(dataToRender).length === 0) {
         elements.contentArea.innerHTML = `
             <div class="empty-state" style="padding: 80px; text-align: center;">
-                <i class="fas fa-inbox" style="font-size: 56px; margin-bottom: 20px; opacity: 0.25; display: block;"></i>
-                <p style="font-size: 16px;">No data available for this date.</p>
+                <i class="fas fa-inbox" style="font-size: 56px; margin-bottom: 20px; opacity: 0.25;"></i>
+                <p style="font-size: 16px;">No data available for this selection.</p>
             </div>
         `;
         return;
     }
 
-    // Use DocumentFragment for better performance
-    const fragment = document.createDocumentFragment();
+    const isGroupView = selectedLocation !== 'all' && CONFIG.LOCATION_GROUPS.hasOwnProperty(selectedLocation);
     let globalAnimationIndex = 0;
 
     for (const [shift, locations] of Object.entries(dataToRender)) {
@@ -791,8 +1015,6 @@ function renderData() {
 
         const shiftWrapper = document.createElement('div');
         shiftWrapper.innerHTML = `<div class="shift-tag"><i class="fas fa-clock"></i> Shift: ${shift}</div>`;
-
-        const isGroupView = selectedLocation !== 'all' && CONFIG.LOCATION_GROUPS.hasOwnProperty(selectedLocation);
 
         if (isGroupView) {
             const groupSection = createGroupedLocationSection(selectedLocation, shift, locations, globalAnimationIndex);
@@ -802,8 +1024,10 @@ function renderData() {
 
             Object.keys(CONFIG.LOCATION_GROUPS).forEach(groupName => {
                 if (selectedLocation !== 'all' && selectedLocation !== groupName) return;
+
                 const groupMembers = CONFIG.LOCATION_GROUPS[groupName];
                 const availableMembers = groupMembers.filter(loc => locations.hasOwnProperty(loc));
+
                 if (availableMembers.length > 0) {
                     globalAnimationIndex++;
                     const groupSection = createGroupedLocationSection(groupName, shift, locations, globalAnimationIndex, availableMembers);
@@ -815,23 +1039,22 @@ function renderData() {
             for (const [locName, teams] of Object.entries(locations)) {
                 if (selectedLocation !== 'all' && locName !== selectedLocation) continue;
                 if (renderedLocations.has(locName)) continue;
+
                 globalAnimationIndex++;
                 const locationSection = createLocationSection(locName, teams, shift, globalAnimationIndex * CONFIG.ANIMATION_STAGGER_DELAY);
                 shiftWrapper.appendChild(locationSection);
             }
         }
 
-        fragment.appendChild(shiftWrapper);
+        elements.contentArea.appendChild(shiftWrapper);
     }
-
-    elements.contentArea.innerHTML = '';
-    elements.contentArea.appendChild(fragment);
 }
 
-/* ---- Reuse existing helper functions ---- */
+/* ---- Grouped Section ---- */
 function createGroupedLocationSection(groupName, shift, allLocations, delayIndex, specificRooms = null) {
-    const roomsToRender = specificRooms || (CONFIG.LOCATION_GROUPS[groupName] || []);
+    const roomsToRender = specificRooms || getGroupLocations(groupName);
     const availableRooms = roomsToRender.filter(room => allLocations.hasOwnProperty(room));
+
     if (availableRooms.length === 0) return null;
 
     const section = document.createElement('div');
@@ -839,6 +1062,7 @@ function createGroupedLocationSection(groupName, shift, allLocations, delayIndex
     section.style.animationDelay = `${delayIndex * CONFIG.ANIMATION_STAGGER_DELAY}ms`;
 
     let totalSubmitted = 0, totalNotSubmitted = 0, roomData = {};
+
     availableRooms.forEach(roomName => {
         const teams = allLocations[roomName];
         roomData[roomName] = teams;
@@ -874,11 +1098,14 @@ function createGroupedLocationSection(groupName, shift, allLocations, delayIndex
     return section;
 }
 
+/* ---- Individual Location Section ---- */
 function createLocationSection(locName, teams, shift, delay) {
     const section = document.createElement('div');
     section.className = 'location-section';
     section.style.animationDelay = `${delay}ms`;
+
     const stats = calculateLocationStats(teams);
+
     section.innerHTML = `
         <div class="location-title">
             <div class="location-icon"><i class="fas fa-map-marker-alt"></i></div>
@@ -887,6 +1114,7 @@ function createLocationSection(locName, teams, shift, delay) {
         ${createHeroStatsHTML(stats)}
         ${createTeamsGridHTML(teams, shift, locName)}
     `;
+
     return section;
 }
 
@@ -897,13 +1125,20 @@ function calculateLocationStats(teams) {
         totalNotSubmitted += team.notSubmitted.length;
     });
     const total = totalSubmitted + totalNotSubmitted;
-    return { submitted: totalSubmitted, notSubmitted: totalNotSubmitted, total, percentage: total > 0 ? Math.round((totalSubmitted / total) * 100) : 0 };
+    return {
+        submitted: totalSubmitted,
+        notSubmitted: totalNotSubmitted,
+        total,
+        percentage: total > 0 ? Math.round((totalSubmitted / total) * 100) : 0
+    };
 }
 
+/* ---- Hero Stats Bar + Progress Ring ---- */
 function createHeroStatsHTML(stats) {
     const radius = 54;
     const circumference = 2 * Math.PI * radius;
     const dashOffset = circumference - (stats.percentage / 100) * circumference;
+
     return `
         <div class="hero-stats">
             <div class="stat-card submitted" style="animation-delay: 0.1s;">
@@ -931,7 +1166,8 @@ function createHeroStatsHTML(stats) {
                 <div class="ring-wrapper">
                     <svg class="progress-ring-svg" viewBox="0 0 120 120">
                         <circle class="ring-bg" cx="60" cy="60" r="${radius}"/>
-                        <circle class="ring-progress" cx="60" cy="60" r="${radius}" style="stroke-dashoffset: ${dashOffset};"/>
+                        <circle class="ring-progress" cx="60" cy="60" r="${radius}"
+                                style="stroke-dashoffset: ${dashOffset};"/>
                     </svg>
                     <div class="ring-center">
                         <div class="ring-percentage">${stats.percentage}%</div>
@@ -947,6 +1183,7 @@ function createHeroStatsHTML(stats) {
     `;
 }
 
+/* ---- Teams Grid ---- */
 function createTeamsGridHTML(teams, shift, locName, roomIndex = 0) {
     let teamsHTML = '<div class="teams-grid">';
     let cardIndex = 0;
@@ -954,8 +1191,10 @@ function createTeamsGridHTML(teams, shift, locName, roomIndex = 0) {
     for (const [tlName, teamData] of Object.entries(teams)) {
         const tlID = generateCardID(shift, locName, tlName);
         const isActive = state.openTeams.has(tlID) ? 'active' : '';
+
         const filteredNotSubmitted = teamData.notSubmitted.filter(u => matchesSearch(u.email, u.pc));
         const filteredSubmitted = teamData.submitted.filter(u => matchesSearch(u.email, u.pc));
+
         if (state.searchTerm && filteredNotSubmitted.length === 0 && filteredSubmitted.length === 0) continue;
 
         cardIndex++;
@@ -1005,6 +1244,7 @@ function createTeamsGridHTML(teams, shift, locName, roomIndex = 0) {
     return teamsHTML;
 }
 
+/* ---- User Box ---- */
 function createUserBoxHTML(user, type, index) {
     return `
         <div class="user-box ${type}-box" style="animation-delay: ${index * 40}ms;">
@@ -1012,185 +1252,6 @@ function createUserBoxHTML(user, type, index) {
             <span class="u-meta"><i class="fas fa-desktop"></i>PC: ${escapeHTML(user.pc)}</span>
         </div>
     `;
-}
-
-/* ============================================
-   FILTER & SEARCH
-   ============================================ */
-let searchTimeout = null;
-function handleSearch() {
-    if (searchTimeout) clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-        state.searchTerm = elements.searchInput.value.toLowerCase().trim();
-        renderData();
-    }, CONFIG.DEBOUNCE_DELAY);
-}
-
-function matchesSearch(email, pc) {
-    if (!state.searchTerm) return true;
-    return (email.toLowerCase().includes(state.searchTerm) || String(pc).toLowerCase().includes(state.searchTerm));
-}
-
-function updateFilters() {
-    const shifts = new Set();
-    const locations = new Set();
-    const dataToUse = state.filteredData && Object.keys(state.filteredData).length > 0 
-        ? state.filteredData : state.rawData;
-
-    Object.keys(dataToUse).forEach(shift => {
-        shifts.add(shift);
-        Object.keys(dataToUse[shift]).forEach(loc => locations.add(loc));
-    });
-    Object.keys(CONFIG.LOCATION_GROUPS).forEach(groupName => locations.add(groupName));
-
-    const currentShift = elements.shiftFilter.value;
-    const currentLoc = elements.locFilter.value;
-
-    elements.shiftFilter.innerHTML = '<option value="all">All Shifts</option>';
-    Array.from(shifts).sort().forEach(shift => {
-        const opt = document.createElement('option');
-        opt.value = shift;
-        opt.textContent = `Shift: ${shift}`;
-        if (shift === currentShift) opt.selected = true;
-        elements.shiftFilter.appendChild(opt);
-    });
-
-    elements.locFilter.innerHTML = '<option value="all">All Locations</option>';
-    Object.keys(CONFIG.LOCATION_GROUPS).sort().forEach(groupName => {
-        const opt = document.createElement('option');
-        opt.value = groupName;
-        opt.textContent = `📍 ${groupName}`;
-        opt.style.fontWeight = 'bold';
-        if (groupName === currentLoc) opt.selected = true;
-        elements.locFilter.appendChild(opt);
-    });
-
-    const groupedLocs = new Set(Object.values(CONFIG.LOCATION_GROUPS).flat());
-    Array.from(locations).filter(loc => !groupedLocs.has(loc) && !Object.keys(CONFIG.LOCATION_GROUPS).includes(loc)).sort().forEach(loc => {
-        const opt = document.createElement('option');
-        opt.value = loc;
-        opt.textContent = loc;
-        if (loc === currentLoc) opt.selected = true;
-        elements.locFilter.appendChild(opt);
-    });
-}
-
-function handleShiftChange() {
-    if (state.currentUser && state.currentUser.role === 'shift_supervisor') {
-        state.currentShift = elements.shiftFilter.value === 'all' ? 'M' : elements.shiftFilter.value;
-        fetchShiftSupervisorData(true);
-    } else {
-        renderData();
-    }
-}
-
-function handleLocationChange() {
-    const role = state.currentUser ? state.currentUser.role : '';
-    const loc = elements.locFilter.value;
-
-    if (role === 'supervisors' && loc !== 'all') {
-        fetchSupervisorRoomData(loc);
-        showView('supervisor');
-    } else {
-        renderData();
-    }
-}
-
-/* ============================================
-   UI HELPERS
-   ============================================ */
-function toggleTeam(tlID) {
-    const card = document.getElementById(tlID);
-    if (!card) return;
-    if (card.classList.contains('active')) {
-        card.classList.remove('active');
-        state.openTeams.delete(tlID);
-    } else {
-        card.classList.add('active');
-        state.openTeams.add(tlID);
-    }
-}
-
-function showLoadingState(show) {
-    if (!show) return;
-    elements.contentArea.innerHTML = `
-        <div id="loader">
-            <div class="loader-spinner">
-                <div class="spinner-ring"></div>
-                <div class="loader-text">Loading data<span class="loader-dots"><span>.</span><span>.</span><span>.</span></span></div>
-            </div>
-        </div>
-    `;
-}
-
-function showErrorState(title, message, error) {
-    const timestamp = new Date().toLocaleTimeString();
-    const currentUrl = state.customApiUrl || CONFIG.API_URL;
-
-    elements.contentArea.innerHTML = `
-        <div class="error-state">
-            <div class="error-header">
-                <div class="error-icon"><i class="fas fa-exclamation-triangle"></i></div>
-                <div class="error-title-section">
-                    <div class="error-title">${title}</div>
-                    <div class="error-subtitle">${message}</div>
-                </div>
-            </div>
-            <div class="error-actions">
-                <button class="btn btn-primary" onclick="manualRefresh()">
-                    <i class="fas fa-redo"></i> Try Again
-                </button>
-            </div>
-            <div class="debug-info">
-                <strong>Technical Details:</strong><br>
-                Timestamp: ${timestamp}<br>
-                Error: ${error?.message ?? 'N/A'}<br>
-                API URL: ${currentUrl.substring(0, 60)}...<br>
-            </div>
-        </div>
-    `;
-}
-
-function showSilentUpdateNotification() {
-    if (!elements.silentUpdate) return;
-    elements.silentUpdate.classList.add('show');
-    setTimeout(() => elements.silentUpdate.classList.remove('show'), 2500);
-}
-
-function smartUpdateUI() {
-    document.querySelectorAll('.stat-value').forEach(el => {
-        el.style.transform = 'scale(1.1)';
-        setTimeout(() => (el.style.transform = 'scale(1)'), 200);
-    });
-}
-
-/* ============================================
-   UTILITY HELPERS
-   ============================================ */
-function formatDateForAPI(dateString) {
-    return dateString.split('-').reverse().join('-');
-}
-
-function generateDataHash(data) {
-    let hash = '';
-    Object.keys(data).forEach(shift => {
-        Object.keys(data[shift]).forEach(loc => {
-            Object.values(data[shift][loc]).forEach(team => {
-                hash += `${team.submitted.length}-${team.notSubmitted.length}`;
-            });
-        });
-    });
-    return hash;
-}
-
-function escapeHTML(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-}
-
-function generateCardID(shift, locName, tlName) {
-    return `card-${shift}-${locName}-${tlName}`.replace(/\s+/g, '-');
 }
 
 /* ============================================
