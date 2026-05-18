@@ -457,6 +457,42 @@ function renderSSView(d) {
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
 
+      <div class="kpi-card kpi-clickable" onclick='openTaskTypePanel("LIDAR First Pass","${label} Shift",${JSON.stringify(d.roomTaskBreakdown||{})},"LIDAR","FP")'>
+        <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-cube"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">LIDAR First Pass</div>
+          <div class="kpi-val kpi-val-blue">${t.LIDAR?.FP||0}</div>
+        </div>
+        <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
+      </div>
+
+      <div class="kpi-card kpi-clickable" onclick='openTaskTypePanel("LIDAR QA","${label} Shift",${JSON.stringify(d.roomTaskBreakdown||{})},"LIDAR","QA")'>
+        <div class="kpi-icon-wrap kpi-green"><i class="fas fa-cube"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">LIDAR QA</div>
+          <div class="kpi-val kpi-val-green">${t.LIDAR?.QA||0}</div>
+        </div>
+        <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
+      </div>
+
+      <div class="kpi-card kpi-clickable" onclick='openTaskTypePanel("Lane Line First Pass","${label} Shift",${JSON.stringify(d.roomTaskBreakdown||{})},"LaneLine","FP")'>
+        <div class="kpi-icon-wrap kpi-purple"><i class="fas fa-road"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Lane Line First Pass</div>
+          <div class="kpi-val kpi-val-purple">${t.LaneLine?.FP||0}</div>
+        </div>
+        <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
+      </div>
+
+      <div class="kpi-card kpi-clickable" onclick='openTaskTypePanel("Lane Line QA","${label} Shift",${JSON.stringify(d.roomTaskBreakdown||{})},"LaneLine","QA")'>
+        <div class="kpi-icon-wrap kpi-yellow"><i class="fas fa-road"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Lane Line QA</div>
+          <div class="kpi-val kpi-val-yellow">${t.LaneLine?.QA||0}</div>
+        </div>
+        <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
+      </div>
+
     </div>
   </div>`;
 
@@ -532,6 +568,54 @@ function openPendingPanel(roomBreakdown, totalPending) {
     ${roomRows || '<p class="br-empty">No pending users.</p>'}`;
 
   openPanel('Pending Breakdown', 'By Room', html);
+}
+
+
+/* NEW: Task type breakdown by room */
+function openTaskTypePanel(title, sub, roomTaskBreakdown, modality, pass) {
+  const roomRows = Object.entries(roomTaskBreakdown).map(([room, t]) => {
+    let count = 0;
+    if (modality === 'LIDAR' && pass === 'FP') count = t.LIDAR?.FP || 0;
+    else if (modality === 'LIDAR' && pass === 'QA') count = t.LIDAR?.QA || 0;
+    else if (modality === 'LaneLine' && pass === 'FP') count = t.LaneLine?.FP || 0;
+    else if (modality === 'LaneLine' && pass === 'QA') count = t.LaneLine?.QA || 0;
+
+    if (count <= 0) return '';
+
+    return `
+    <div class="br-row room-detail-row">
+      <div class="room-detail-main">
+        <span class="br-label"><i class="fas fa-door-open"></i>${room}</span>
+        <span class="br-pill pill-blue">${count} ${pass}</span>
+      </div>
+      <div class="room-detail-stats">
+        <span class="br-pill pill-green"><i class="fas fa-cube"></i>LIDAR FP: ${t.LIDAR?.FP || 0}</span>
+        <span class="br-pill pill-green"><i class="fas fa-cube"></i>LIDAR QA: ${t.LIDAR?.QA || 0}</span>
+        <span class="br-pill pill-purple"><i class="fas fa-road"></i>LaneLine FP: ${t.LaneLine?.FP || 0}</span>
+        <span class="br-pill pill-yellow"><i class="fas fa-road"></i>LaneLine QA: ${t.LaneLine?.QA || 0}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  const totalCount = Object.values(roomTaskBreakdown).reduce((sum, t) => {
+    if (modality === 'LIDAR' && pass === 'FP') return sum + (t.LIDAR?.FP || 0);
+    if (modality === 'LIDAR' && pass === 'QA') return sum + (t.LIDAR?.QA || 0);
+    if (modality === 'LaneLine' && pass === 'FP') return sum + (t.LaneLine?.FP || 0);
+    if (modality === 'LaneLine' && pass === 'QA') return sum + (t.LaneLine?.QA || 0);
+    return sum;
+  }, 0);
+
+  const html = `
+    <div class="br-summary-card">
+      <div class="br-summary-row">
+        <span class="brs-label">Total ${title}</span>
+        <span class="brs-val">${totalCount}</span>
+      </div>
+    </div>
+    <div class="br-section" style="margin-top:20px">Breakdown by Room</div>
+    ${roomRows || '<p class="br-empty">No data for this task type.</p>'}`;
+
+  openPanel(title, sub, html);
 }
 
 /* Supervisor location breakdown */
