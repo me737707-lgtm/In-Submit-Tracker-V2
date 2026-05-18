@@ -1,5 +1,5 @@
 /* ================================================
-   SCRIPT.JS  v3.1  —  Full Feature Engine (Fixed)
+   SCRIPT.JS  v3.2  —  Full Feature Engine (Fixed)
    Depends on config.js loaded first (no defer)
    ================================================ */
 
@@ -45,7 +45,6 @@ async function api(params, cacheKey, retryCount = 0) {
     return data;
   } catch(e){ 
     clearTimeout(tid); 
-    // Retry logic for transient errors
     if (retryCount < 2 && (e.name === 'TypeError' || e.name === 'AbortError' || e.message.includes('Failed to fetch'))) {
       console.warn(`API retry ${retryCount + 1} for`, params);
       await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)));
@@ -80,7 +79,6 @@ async function handleLogin(e) {
   const pass  = D.password.value.trim();
   setLoginState('loading');
 
-  // Try to load users if not loaded, with retries
   if (!S.users.length) {
     let loaded = false;
     for (let i = 0; i < S._maxLoginRetries; i++) {
@@ -91,15 +89,13 @@ async function handleLogin(e) {
     }
 
     if (!loaded) {
-      // If server is temporarily unavailable, try direct login check
-      console.log('Trying direct login fallback...');
       try {
         const d = await api({action:'login',username:uname,password:pass}, null, 1);
         if (d.success) {
           S.user = d;
           S.loggedIn = true;
-          S.users = [{username:d.username,password:pass,role:d.role,permission:d.permission}];
-          console.log('✅ Direct login success:', d.role, d.permission);
+          S.users = [{username:d.username,password:pass,role:d.role,permission:d.permission,shift:d.shift}];
+          console.log('✅ Direct login success:', d.role, d.permission, d.shift);
           D.loginOverlay.style.display = 'none';
           renderUserChip(d);
           initDashboard();
@@ -120,7 +116,7 @@ async function handleLogin(e) {
 
   if (found) {
     S.user = found; S.loggedIn = true;
-    console.log('✅ Login success:', found.role, found.permission);
+    console.log('✅ Login success:', found.role, found.permission, found.shift);
     D.loginOverlay.style.display = 'none';
     renderUserChip(found);
     initDashboard();
@@ -170,9 +166,11 @@ function initDashboard() {
   D.datePicker.value = new Date().toISOString().split('T')[0];
 
   const role = S.user?.role;
-  const permission = S.user?.permission;
+  // FIXED: Use shift column (E) for shift supervisor, not permission column (D)
+  // If shift is not available, fallback to permission
+  const shift = S.user?.shift || S.user?.permission;
 
-  console.log('Role:', role, '| Permission:', permission);
+  console.log('Role:', role, '| Shift:', shift, '| Permission:', S.user?.permission);
   console.log('Expected shiftSupervisor role:', CONFIG.ROLES.SHIFT_SUPERVISOR);
   console.log('Match?', role === CONFIG.ROLES.SHIFT_SUPERVISOR);
 
@@ -180,7 +178,6 @@ function initDashboard() {
     console.log('👉 Rendering SHIFT SUPERVISOR view');
     D.mainContent.style.display = 'none';
     D.ssView.style.display      = 'block';
-    // Hide shift and location filters for shift supervisor
     if (D.shiftFilter) D.shiftFilter.style.display='none';
     if (D.locFilter) D.locFilter.style.display='none';
     fetchShiftSupervisor(true);
@@ -189,7 +186,6 @@ function initDashboard() {
     console.log('👉 Rendering MAIN DASHBOARD view');
     D.mainContent.style.display = 'block';
     D.ssView.style.display      = 'none';
-    // Show filters for other roles
     if (D.shiftFilter) D.shiftFilter.style.display='';
     if (D.locFilter) D.locFilter.style.display='';
     fetchMain(true);
@@ -254,7 +250,6 @@ function filterForUser(data) {
   if (!u) return data;
   if (u.role===CONFIG.ROLES.SUPERVISOR) return data;
 
-  // QC: show only own team(s)
   if (u.role===CONFIG.ROLES.QC || u.permission==='only') {
     const out={};
     for (const [shift,locs] of Object.entries(data))
@@ -276,12 +271,18 @@ function filterForUser(data) {
    SHIFT SUPERVISOR VIEW
    ================================================ */
 async function fetchShiftSupervisor(full) {
-  const shift = S.user?.permission;  // permission = "M"|"N"|"ON"
+  // FIXED: Use shift property (column E) not permission (column D)
+  const shift = S.user?.shift || S.user?.permission;
   console.log('fetchShiftSupervisor called, shift:', shift);
 
-  if (!shift) {
-    console.error('❌ No shift permission found for user');
-    D.ssView.innerHTML = `<div class="err-simple"><i class="fas fa-triangle-exclamation"></i> No shift assigned. Check user permission in Login Users sheet.</div>`;
+  if (!shift || shift === 'all') {
+    console.error('❌ No valid shift found for user. shift:', shift, 'user:', S.user);
+    D.ssView.innerHTML = `<div class="err-simple"><i class="fas fa-triangle-exclamation"></i> 
+      <strong>Shift not configured correctly.</strong><br><br>
+      Your account needs a shift assignment (M, N, or ON).<br>
+      Current value: "${shift || 'empty'}"<br><br>
+      Please ask the admin to set your Shift column (E) to M, N, or ON in the Login Users sheet.
+    </div>`;
     setStatus('error');
     return;
   }
@@ -310,7 +311,6 @@ function renderSSView(d) {
   const pct        = d.totalActive>0 ? Math.round((d.totalSubmitted/d.totalActive)*100) : 0;
   const pendCount  = d.totalActive - d.totalSubmitted;
 
-  // Room rows for panel with detailed attendance
   const roomRows = Object.entries(d.roomBreakdown||{}).map(([room,r])=>{
     const trainingBadges = Object.entries(r.trainingByLevel||{}).map(([l,c])=>`<span class="train-badge-sm">${l}: ${c}</span>`).join('');
     return `
@@ -331,7 +331,6 @@ function renderSSView(d) {
     </div>`;
   }).join('');
 
-  // Task rows for panel
   const t = d.tasks||{};
   const taskRows = `
     <div class="br-section">LIDAR</div>
@@ -344,7 +343,6 @@ function renderSSView(d) {
       Object.entries(t.other||{}).map(([k,v])=>`<div class="br-row"><span class="br-label">${k}</span><span class="br-pill pill-yellow">${v}</span></div>`).join(''):''}
   `;
 
-  // Attendance breakdown rows
   const attRows = `
     <div class="br-section">Attendance Overview</div>
     <div class="br-row">
@@ -369,7 +367,6 @@ function renderSSView(d) {
     </div>`:''}
   `;
 
-  // Training badges for main view
   const trainingHTML = att.totalTraining>0
     ? `<div class="kpi-extra">${Object.entries(att.trainingByLevel||{}).map(([l,c])=>`<span class="train-badge">${l}: ${c}</span>`).join('')}</div>`
     : '';
@@ -715,7 +712,6 @@ function renderDashboard() {
 
     const rendered=new Set();
 
-    // Grouped locations first
     Object.keys(CONFIG.LOCATION_GROUPS).forEach(grp=>{
       if (selLoc!=='all'&&selLoc!==grp) return;
       const members=(CONFIG.LOCATION_GROUPS[grp]||[]).filter(r=>locs[r]);
@@ -724,7 +720,6 @@ function renderDashboard() {
       members.forEach(m=>rendered.add(m));
     });
 
-    // Standalone locations
     for (const [loc,teams] of Object.entries(locs)) {
       if (selLoc!=='all'&&selLoc!==loc) continue;
       if (rendered.has(loc)) continue;
@@ -734,7 +729,6 @@ function renderDashboard() {
   }
 }
 
-/* Group (e.g. Saint Fatima) */
 function buildGroupSection(grpName,shift,allLocs,members,idx,isSup,isQC) {
   let totSub=0,totPend=0;
   const roomData={};
@@ -771,7 +765,6 @@ function buildGroupSection(grpName,shift,allLocs,members,idx,isSup,isQC) {
   return sec;
 }
 
-/* Individual location */
 function buildLocSection(loc,teams,shift,idx,isSup,isQC) {
   let s=0,n=0;
   Object.values(teams).forEach(t=>{ s+=t.submitted.length; n+=t.notSubmitted.length; });
@@ -792,7 +785,6 @@ function buildLocSection(loc,teams,shift,idx,isSup,isQC) {
   return sec;
 }
 
-/* Hero stats bar */
 function heroStats(sub,pend,total,pct) {
   const r=40, circ=(2*Math.PI*r).toFixed(1), off=(circ-(pct/100)*circ).toFixed(1);
   return `
@@ -822,7 +814,6 @@ function heroStats(sub,pend,total,pct) {
   </div>`;
 }
 
-/* Teams grid */
 function buildTeamsGrid(teams,shift,loc,roomIdx,isSup,isQC) {
   const grid=document.createElement('div');
   grid.className='teams-grid';
@@ -917,7 +908,6 @@ function esc(s){ const d=document.createElement('div'); d.textContent=s; return 
    BOOT
    ================================================ */
 document.addEventListener('DOMContentLoaded', async ()=>{
-  // Cache all DOM refs
   Object.assign(D,{
     loginOverlay:  document.getElementById('loginOverlay'),
     loginForm:     document.getElementById('loginForm'),
@@ -948,7 +938,6 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   });
 
   console.log('🚀 App initialized, loading users...');
-  // Pre-load users in background
   await loadUsers();
   console.log('Users loaded:', S.users.length);
 });
