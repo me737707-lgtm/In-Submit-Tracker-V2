@@ -308,8 +308,9 @@ function renderSSView(d) {
   const shift      = d.shift;
   const label      = CONFIG.SHIFT_LABELS[shift]||shift;
   const att        = d.attendance || {};
-  const pct        = d.totalActive>0 ? Math.round((d.totalSubmitted/d.totalActive)*100) : 0;
-  const pendCount  = d.totalActive - d.totalSubmitted;
+  const totalActive = d.totalUsers || att.totalActive || 0;
+  const pct        = totalActive>0 ? Math.round((d.totalSubmitted/totalActive)*100) : 0;
+  const pendCount  = d.totalPending || 0;
 
   const roomRows = Object.entries(d.roomBreakdown||{}).map(([room,r])=>{
     const trainingBadges = Object.entries(r.trainingByLevel||{}).map(([l,c])=>`<span class="train-badge-sm">${l}: ${c}</span>`).join('');
@@ -405,12 +406,13 @@ function renderSSView(d) {
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
 
-      <div class="kpi-card">
+      <div class="kpi-card kpi-clickable" onclick='openPendingPanel(${JSON.stringify(d.roomBreakdown||{})},${d.totalPending||0})'>
         <div class="kpi-icon-wrap kpi-red"><i class="fas fa-hourglass-half"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">Pending</div>
           <div class="kpi-val kpi-val-red">${pendCount}</div>
         </div>
+        <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
 
       <div class="kpi-card kpi-ring">
@@ -493,6 +495,43 @@ function closePanel() {
   D.sidePanel.classList.remove('open');
   D.panelMask.classList.remove('open');
   document.body.style.overflow='';
+}
+
+
+/* NEW: Pending breakdown by room */
+function openPendingPanel(roomBreakdown, totalPending) {
+  const roomRows = Object.entries(roomBreakdown).map(([room, r]) => {
+    if ((r.pending || 0) <= 0) return '';
+    return `
+    <div class="br-row room-detail-row">
+      <div class="room-detail-main">
+        <span class="br-label"><i class="fas fa-door-open"></i>${room}</span>
+        <span class="br-pill pill-red">${r.pending || 0} pending</span>
+      </div>
+      <div class="room-detail-stats">
+        <span class="br-pill pill-green"><i class="fas fa-user-check"></i>${r.active || 0} active</span>
+        <span class="br-pill pill-blue"><i class="fas fa-check"></i>${r.submitted || 0} done</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  const totalActiveCount = totalPending + (roomBreakdown ? Object.values(roomBreakdown).reduce((sum, r) => sum + (r.submitted || 0), 0) : 0);
+
+  const html = `
+    <div class="br-summary-card">
+      <div class="br-summary-row">
+        <span class="brs-label">Total Pending</span>
+        <span class="brs-val c-red">${totalPending}</span>
+      </div>
+      <div class="br-summary-row">
+        <span class="brs-label">Total Active</span>
+        <span class="brs-val">${totalActiveCount}</span>
+      </div>
+    </div>
+    <div class="br-section" style="margin-top:20px">Pending by Room</div>
+    ${roomRows || '<p class="br-empty">No pending users.</p>'}`;
+
+  openPanel('Pending Breakdown', 'By Room', html);
 }
 
 /* Supervisor location breakdown */
