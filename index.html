@@ -12,7 +12,7 @@
 </head>
 <body>
 
-<!-- LOGIN -->
+<!-- ══ LOGIN ═══════════════════════════════════════ -->
 <div id="loginOverlay" class="login-overlay">
   <div class="login-card">
     <div class="login-logo"><i class="fas fa-chart-line"></i></div>
@@ -21,18 +21,21 @@
     <form id="loginForm" onsubmit="handleLogin(event)">
       <div class="field-group">
         <label class="field-label">Username</label>
-        <div class="field-wrap"><i class="fas fa-user field-icon"></i>
+        <div class="field-wrap">
+          <i class="fas fa-user field-icon"></i>
           <input type="text" id="username" class="field-input" placeholder="Enter username" required autocomplete="username">
         </div>
       </div>
       <div class="field-group">
         <label class="field-label">Password</label>
-        <div class="field-wrap"><i class="fas fa-lock field-icon"></i>
+        <div class="field-wrap">
+          <i class="fas fa-lock field-icon"></i>
           <input type="password" id="password" class="field-input" placeholder="Enter password" required autocomplete="current-password">
         </div>
       </div>
       <div id="loginError" class="login-error" style="display:none">
-        <i class="fas fa-exclamation-circle"></i><span id="loginErrorMsg">Invalid credentials</span>
+        <i class="fas fa-exclamation-circle"></i>
+        <span id="loginErrorMsg">Invalid credentials</span>
       </div>
       <button type="submit" id="loginBtn" class="login-btn">
         <i class="fas fa-arrow-right-to-bracket"></i> Sign In
@@ -44,7 +47,7 @@
   </div>
 </div>
 
-<!-- BREAKDOWN PANEL -->
+<!-- ══ SIDE PANEL ══════════════════════════════════ -->
 <div id="panelMask" class="panel-mask" onclick="closePanel()"></div>
 <aside id="sidePanel" class="side-panel">
   <div class="panel-top">
@@ -59,10 +62,9 @@
   </div>
 </aside>
 
-<!-- APP -->
+<!-- ══ APP ═════════════════════════════════════════ -->
 <div id="app" class="app">
 
-  <!-- HEADER -->
   <header id="appHeader" class="app-header">
     <div class="header-brand">
       <div class="brand-mark"><i class="fas fa-chart-line"></i></div>
@@ -99,15 +101,11 @@
     </div>
   </header>
 
-  <!-- SHIFT SUPERVISOR VIEW (shown instead of main for shiftSupervisor role) -->
   <div id="ssView" style="display:none"></div>
-
-  <!-- MAIN DASHBOARD -->
   <main id="mainContent"></main>
 
 </div>
 
-<!-- Toast -->
 <div id="toast" class="toast"><i class="fas fa-rotate"></i> Updated</div>
 
 <script src="config.js"></script>
