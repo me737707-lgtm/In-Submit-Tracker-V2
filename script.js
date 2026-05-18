@@ -333,6 +333,10 @@ function renderSSView(d) {
   }).join('');
 
   const t = d.tasks||{};
+  const u = d.roomUserBreakdown ? {
+    LIDAR: { FP: Object.values(d.roomUserBreakdown).reduce((s,r)=>(r.LIDAR?.FP||0)+s,0), QA: Object.values(d.roomUserBreakdown).reduce((s,r)=>(r.LIDAR?.QA||0)+s,0) },
+    LaneLine: { FP: Object.values(d.roomUserBreakdown).reduce((s,r)=>(r.LaneLine?.FP||0)+s,0), QA: Object.values(d.roomUserBreakdown).reduce((s,r)=>(r.LaneLine?.QA||0)+s,0) }
+  } : {LIDAR:{FP:0,QA:0},LaneLine:{FP:0,QA:0}};
   const taskRows = `
     <div class="br-section">LIDAR</div>
     <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${t.LIDAR?.FP||0} tasks</span></div>
@@ -457,38 +461,42 @@ function renderSSView(d) {
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
 
-      <div class="kpi-card kpi-clickable" onclick='openTaskTypePanel("LIDAR First Pass","${label} Shift",${JSON.stringify(d.roomTaskBreakdown||{})},"LIDAR","FP")'>
+      <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("LIDAR First Pass","${label} Shift",${JSON.stringify(d.roomUserBreakdown||{})},"LIDAR","FP")'>
         <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-cube"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">LIDAR First Pass</div>
-          <div class="kpi-val kpi-val-blue">${t.LIDAR?.FP||0}</div>
+          <div class="kpi-val kpi-val-blue">${u.LIDAR?.FP||0}</div>
+          <div class="kpi-sub">labelers</div>
         </div>
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
 
-      <div class="kpi-card kpi-clickable" onclick='openTaskTypePanel("LIDAR QA","${label} Shift",${JSON.stringify(d.roomTaskBreakdown||{})},"LIDAR","QA")'>
+      <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("LIDAR QA","${label} Shift",${JSON.stringify(d.roomUserBreakdown||{})},"LIDAR","QA")'>
         <div class="kpi-icon-wrap kpi-green"><i class="fas fa-cube"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">LIDAR QA</div>
-          <div class="kpi-val kpi-val-green">${t.LIDAR?.QA||0}</div>
+          <div class="kpi-val kpi-val-green">${u.LIDAR?.QA||0}</div>
+          <div class="kpi-sub">labelers</div>
         </div>
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
 
-      <div class="kpi-card kpi-clickable" onclick='openTaskTypePanel("Lane Line First Pass","${label} Shift",${JSON.stringify(d.roomTaskBreakdown||{})},"LaneLine","FP")'>
+      <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("Lane Line First Pass","${label} Shift",${JSON.stringify(d.roomUserBreakdown||{})},"LaneLine","FP")'>
         <div class="kpi-icon-wrap kpi-purple"><i class="fas fa-road"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">Lane Line First Pass</div>
-          <div class="kpi-val kpi-val-purple">${t.LaneLine?.FP||0}</div>
+          <div class="kpi-val kpi-val-purple">${u.LaneLine?.FP||0}</div>
+          <div class="kpi-sub">labelers</div>
         </div>
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
 
-      <div class="kpi-card kpi-clickable" onclick='openTaskTypePanel("Lane Line QA","${label} Shift",${JSON.stringify(d.roomTaskBreakdown||{})},"LaneLine","QA")'>
+      <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("Lane Line QA","${label} Shift",${JSON.stringify(d.roomUserBreakdown||{})},"LaneLine","QA")'>
         <div class="kpi-icon-wrap kpi-yellow"><i class="fas fa-road"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">Lane Line QA</div>
-          <div class="kpi-val kpi-val-yellow">${t.LaneLine?.QA||0}</div>
+          <div class="kpi-val kpi-val-yellow">${u.LaneLine?.QA||0}</div>
+          <div class="kpi-sub">labelers</div>
         </div>
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
@@ -571,14 +579,14 @@ function openPendingPanel(roomBreakdown, totalPending) {
 }
 
 
-/* NEW: Task type breakdown by room */
-function openTaskTypePanel(title, sub, roomTaskBreakdown, modality, pass) {
-  const roomRows = Object.entries(roomTaskBreakdown).map(([room, t]) => {
+/* NEW: User type breakdown by room */
+function openUserTypePanel(title, sub, roomUserBreakdown, modality, pass) {
+  const roomRows = Object.entries(roomUserBreakdown).map(([room, r]) => {
     let count = 0;
-    if (modality === 'LIDAR' && pass === 'FP') count = t.LIDAR?.FP || 0;
-    else if (modality === 'LIDAR' && pass === 'QA') count = t.LIDAR?.QA || 0;
-    else if (modality === 'LaneLine' && pass === 'FP') count = t.LaneLine?.FP || 0;
-    else if (modality === 'LaneLine' && pass === 'QA') count = t.LaneLine?.QA || 0;
+    if (modality === 'LIDAR' && pass === 'FP') count = r.LIDAR?.FP || 0;
+    else if (modality === 'LIDAR' && pass === 'QA') count = r.LIDAR?.QA || 0;
+    else if (modality === 'LaneLine' && pass === 'FP') count = r.LaneLine?.FP || 0;
+    else if (modality === 'LaneLine' && pass === 'QA') count = r.LaneLine?.QA || 0;
 
     if (count <= 0) return '';
 
@@ -586,34 +594,34 @@ function openTaskTypePanel(title, sub, roomTaskBreakdown, modality, pass) {
     <div class="br-row room-detail-row">
       <div class="room-detail-main">
         <span class="br-label"><i class="fas fa-door-open"></i>${room}</span>
-        <span class="br-pill pill-blue">${count} ${pass}</span>
+        <span class="br-pill pill-blue">${count} labelers</span>
       </div>
       <div class="room-detail-stats">
-        <span class="br-pill pill-green"><i class="fas fa-cube"></i>LIDAR FP: ${t.LIDAR?.FP || 0}</span>
-        <span class="br-pill pill-green"><i class="fas fa-cube"></i>LIDAR QA: ${t.LIDAR?.QA || 0}</span>
-        <span class="br-pill pill-purple"><i class="fas fa-road"></i>LaneLine FP: ${t.LaneLine?.FP || 0}</span>
-        <span class="br-pill pill-yellow"><i class="fas fa-road"></i>LaneLine QA: ${t.LaneLine?.QA || 0}</span>
+        <span class="br-pill pill-green"><i class="fas fa-cube"></i>LIDAR FP: ${r.LIDAR?.FP || 0}</span>
+        <span class="br-pill pill-green"><i class="fas fa-cube"></i>LIDAR QA: ${r.LIDAR?.QA || 0}</span>
+        <span class="br-pill pill-purple"><i class="fas fa-road"></i>LaneLine FP: ${r.LaneLine?.FP || 0}</span>
+        <span class="br-pill pill-yellow"><i class="fas fa-road"></i>LaneLine QA: ${r.LaneLine?.QA || 0}</span>
       </div>
     </div>`;
   }).join('');
 
-  const totalCount = Object.values(roomTaskBreakdown).reduce((sum, t) => {
-    if (modality === 'LIDAR' && pass === 'FP') return sum + (t.LIDAR?.FP || 0);
-    if (modality === 'LIDAR' && pass === 'QA') return sum + (t.LIDAR?.QA || 0);
-    if (modality === 'LaneLine' && pass === 'FP') return sum + (t.LaneLine?.FP || 0);
-    if (modality === 'LaneLine' && pass === 'QA') return sum + (t.LaneLine?.QA || 0);
+  const totalCount = Object.values(roomUserBreakdown).reduce((sum, r) => {
+    if (modality === 'LIDAR' && pass === 'FP') return sum + (r.LIDAR?.FP || 0);
+    if (modality === 'LIDAR' && pass === 'QA') return sum + (r.LIDAR?.QA || 0);
+    if (modality === 'LaneLine' && pass === 'FP') return sum + (r.LaneLine?.FP || 0);
+    if (modality === 'LaneLine' && pass === 'QA') return sum + (r.LaneLine?.QA || 0);
     return sum;
   }, 0);
 
   const html = `
     <div class="br-summary-card">
       <div class="br-summary-row">
-        <span class="brs-label">Total ${title}</span>
+        <span class="brs-label">Total ${title} Labelers</span>
         <span class="brs-val">${totalCount}</span>
       </div>
     </div>
-    <div class="br-section" style="margin-top:20px">Breakdown by Room</div>
-    ${roomRows || '<p class="br-empty">No data for this task type.</p>'}`;
+    <div class="br-section" style="margin-top:20px">Labelers by Room</div>
+    ${roomRows || '<p class="br-empty">No labelers for this type.</p>'}`;
 
   openPanel(title, sub, html);
 }
