@@ -194,7 +194,7 @@ function initDashboard() {
 
   document.addEventListener('keydown', ev=>{
     if ((ev.ctrlKey||ev.metaKey)&&ev.key==='k'){ ev.preventDefault(); D.searchInput.focus(); }
-    if (ev.key==='Escape') closePanel();
+    if (ev.key==='Escape') { closePanel(); closeCenterModal(); closeQcModal(); }
   });
 }
 
@@ -502,7 +502,7 @@ function renderSSView(d) {
         <div class="kpi-icon-wrap kpi-purple"><i class="fas fa-user-tie"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">QC Breakdown</div>
-          <div class="kpi-val kpi-val-purple">${Object.keys(d.qcs||{}).length} QCs</div>
+          <div class="kpi-val kpi-val-purple">${d.qcCount||0} QCs</div>
           <div class="kpi-sub">Click for details</div>
         </div>
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
@@ -533,19 +533,53 @@ function ringHTML(pct) {
    BREAKDOWN PANEL
    ================================================ */
 function openPanel(title, sub, htmlContent) {
-  D.panelTitle.textContent   = title;
-  D.panelSub.textContent     = sub||'';
-  D.panelContent.innerHTML   = typeof htmlContent==='string' ? htmlContent
-    : '<div class="panel-spin"><div class="spin-ring"></div></div>';
-  D.sidePanel.classList.add('open');
-  D.panelMask.classList.add('open');
-  document.body.style.overflow='hidden';
+  // Use center modal instead of side panel
+  openCenterModal(title, sub, htmlContent);
 }
 
 function closePanel() {
-  D.sidePanel.classList.remove('open');
-  D.panelMask.classList.remove('open');
-  document.body.style.overflow='';
+  closeCenterModal();
+}
+
+/* Center Modal System */
+function openCenterModal(title, sub, htmlContent) {
+  let modal = document.getElementById('centerModal');
+  let mask = document.getElementById('centerModalMask');
+
+  if (!modal) {
+    const modalHTML = `
+    <div id="centerModalMask" class="qc-modal-mask" onclick="closeCenterModal()"></div>
+    <div id="centerModal" class="qc-modal">
+      <div class="qc-modal-header">
+        <div>
+          <p id="centerModalSub" class="qc-modal-sub"></p>
+          <h2 id="centerModalTitle" class="qc-modal-title"></h2>
+        </div>
+        <button class="qc-modal-close" onclick="closeCenterModal()"><i class="fas fa-xmark"></i></button>
+      </div>
+      <div id="centerModalContent" class="qc-modal-content"></div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    modal = document.getElementById('centerModal');
+    mask = document.getElementById('centerModalMask');
+  }
+
+  document.getElementById('centerModalTitle').textContent = title;
+  document.getElementById('centerModalSub').textContent = sub || '';
+  document.getElementById('centerModalContent').innerHTML = typeof htmlContent === 'string' ? htmlContent
+    : '<div class="qc-modal-spin"><div class="spin-ring"></div></div>';
+
+  modal.classList.add('open');
+  mask.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeCenterModal() {
+  const modal = document.getElementById('centerModal');
+  const mask = document.getElementById('centerModalMask');
+  if (modal) modal.classList.remove('open');
+  if (mask) mask.classList.remove('open');
+  document.body.style.overflow = '';
 }
 
 
