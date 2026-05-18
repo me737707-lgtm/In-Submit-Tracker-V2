@@ -1,5 +1,5 @@
 /* ================================================
-   SCRIPT.JS  v3.0  —  Full Feature Engine
+   SCRIPT.JS  v3.1  —  Full Feature Engine (Fixed)
    Depends on config.js loaded first (no defer)
    ================================================ */
 
@@ -47,6 +47,7 @@ async function api(params, cacheKey, retryCount = 0) {
     clearTimeout(tid); 
     // Retry logic for transient errors
     if (retryCount < 2 && (e.name === 'TypeError' || e.name === 'AbortError' || e.message.includes('Failed to fetch'))) {
+      console.warn(`API retry ${retryCount + 1} for`, params);
       await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)));
       return api(params, cacheKey, retryCount + 1);
     }
@@ -63,6 +64,7 @@ async function loadUsers() {
     if (d.success && d.users?.length) {
       S.users = d.users;
       S._loginRetries = 0;
+      console.log('✅ Users loaded:', S.users.length);
       return true;
     }
     return false;
@@ -82,6 +84,7 @@ async function handleLogin(e) {
   if (!S.users.length) {
     let loaded = false;
     for (let i = 0; i < S._maxLoginRetries; i++) {
+      console.log(`Loading users attempt ${i + 1}...`);
       loaded = await loadUsers();
       if (loaded) break;
       await new Promise(r => setTimeout(r, 800));
@@ -89,12 +92,14 @@ async function handleLogin(e) {
 
     if (!loaded) {
       // If server is temporarily unavailable, try direct login check
+      console.log('Trying direct login fallback...');
       try {
         const d = await api({action:'login',username:uname,password:pass}, null, 1);
         if (d.success) {
           S.user = d;
           S.loggedIn = true;
           S.users = [{username:d.username,password:pass,role:d.role,permission:d.permission}];
+          console.log('✅ Direct login success:', d.role, d.permission);
           D.loginOverlay.style.display = 'none';
           renderUserChip(d);
           initDashboard();
@@ -115,6 +120,7 @@ async function handleLogin(e) {
 
   if (found) {
     S.user = found; S.loggedIn = true;
+    console.log('✅ Login success:', found.role, found.permission);
     D.loginOverlay.style.display = 'none';
     renderUserChip(found);
     initDashboard();
@@ -159,12 +165,19 @@ function handleLogout() {
    INIT
    ================================================ */
 function initDashboard() {
+  console.log('🚀 initDashboard called, user:', S.user);
   setStatus('loading');
   D.datePicker.value = new Date().toISOString().split('T')[0];
 
   const role = S.user?.role;
+  const permission = S.user?.permission;
+
+  console.log('Role:', role, '| Permission:', permission);
+  console.log('Expected shiftSupervisor role:', CONFIG.ROLES.SHIFT_SUPERVISOR);
+  console.log('Match?', role === CONFIG.ROLES.SHIFT_SUPERVISOR);
 
   if (role === CONFIG.ROLES.SHIFT_SUPERVISOR) {
+    console.log('👉 Rendering SHIFT SUPERVISOR view');
     D.mainContent.style.display = 'none';
     D.ssView.style.display      = 'block';
     // Hide shift and location filters for shift supervisor
@@ -173,6 +186,7 @@ function initDashboard() {
     fetchShiftSupervisor(true);
     S._timer = setInterval(()=>fetchShiftSupervisor(false), CONFIG.REFRESH_INTERVAL);
   } else {
+    console.log('👉 Rendering MAIN DASHBOARD view');
     D.mainContent.style.display = 'block';
     D.ssView.style.display      = 'none';
     // Show filters for other roles
@@ -263,21 +277,33 @@ function filterForUser(data) {
    ================================================ */
 async function fetchShiftSupervisor(full) {
   const shift = S.user?.permission;  // permission = "M"|"N"|"ON"
+  console.log('fetchShiftSupervisor called, shift:', shift);
+
+  if (!shift) {
+    console.error('❌ No shift permission found for user');
+    D.ssView.innerHTML = `<div class="err-simple"><i class="fas fa-triangle-exclamation"></i> No shift assigned. Check user permission in Login Users sheet.</div>`;
+    setStatus('error');
+    return;
+  }
+
   const date  = fmtDate(D.datePicker.value);
   const key   = 'ss_'+shift+'_'+date;
   if (full) { D.ssView.innerHTML='<div class="ss-skeleton"><div class="spin-ring"></div><p>Loading shift data…</p></div>'; }
   try {
     const d = await api({action:'shiftSupervisor',shift,date}, key, 0);
+    console.log('Shift supervisor response:', d);
     if (!d.success) throw new Error(d.error||'Failed');
     renderSSView(d);
     setStatus('live');
   } catch(e) {
+    console.error('❌ Shift supervisor error:', e);
     D.ssView.innerHTML=`<div class="err-simple"><i class="fas fa-triangle-exclamation"></i> ${e.message}</div>`;
     setStatus('error');
   }
 }
 
 function renderSSView(d) {
+  console.log('renderSSView called with:', d);
   const shift      = d.shift;
   const label      = CONFIG.SHIFT_LABELS[shift]||shift;
   const att        = d.attendance || {};
@@ -434,6 +460,8 @@ function renderSSView(d) {
 
     </div>
   </div>`;
+
+  console.log('✅ Shift Supervisor view rendered successfully');
 }
 
 function ringHTML(pct) {
@@ -919,6 +947,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     toast:         document.getElementById('toast'),
   });
 
+  console.log('🚀 App initialized, loading users...');
   // Pre-load users in background
   await loadUsers();
+  console.log('Users loaded:', S.users.length);
 });
