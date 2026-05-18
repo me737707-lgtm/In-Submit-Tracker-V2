@@ -1,5 +1,5 @@
 /* ================================================
-   STYLE.CSS  v3.0  —  Google + Apple Design System
+   STYLE.CSS  v3.1  —  Google + Apple Design System
    Dark mode · Material You colours · SF Pro spacing
    ================================================ */
 
@@ -398,24 +398,24 @@ a{ color:inherit; text-decoration:none; }
 }
 .ctrl-select:focus,.ctrl-date:focus{ border-color:var(--blue); }
 
-/* FIXED: Dropdown options styling */
+/* FIXED: Dropdown options styling - ensure dark background */
 .ctrl-select option,
 .ctrl-select optgroup{
-  background:var(--bg-2);
-  color:var(--t-1);
+  background:var(--bg-2) !important;
+  color:var(--t-1) !important;
   padding:8px 12px;
   font-size:13px;
 }
 .ctrl-select option:hover,
 .ctrl-select option:focus,
 .ctrl-select option:checked{
-  background:var(--blue-bg);
-  color:var(--blue);
+  background:var(--blue-bg) !important;
+  color:var(--blue) !important;
 }
 /* Ensure dropdown list itself is dark */
 .ctrl-select optgroup{
-  background:var(--bg-3);
-  color:var(--t-2);
+  background:var(--bg-3) !important;
+  color:var(--t-2) !important;
   font-weight:700;
 }
 
