@@ -333,10 +333,7 @@ function renderSSView(d) {
   }).join('');
 
   const t = d.tasks||{};
-  const u = d.roomUserBreakdown ? {
-    LIDAR: { FP: Object.values(d.roomUserBreakdown).reduce((s,r)=>(r.LIDAR?.FP||0)+s,0), QA: Object.values(d.roomUserBreakdown).reduce((s,r)=>(r.LIDAR?.QA||0)+s,0) },
-    LaneLine: { FP: Object.values(d.roomUserBreakdown).reduce((s,r)=>(r.LaneLine?.FP||0)+s,0), QA: Object.values(d.roomUserBreakdown).reduce((s,r)=>(r.LaneLine?.QA||0)+s,0) }
-  } : {LIDAR:{FP:0,QA:0},LaneLine:{FP:0,QA:0}};
+  const u = d.overallUserBreakdown || {LIDAR:{FP:0,QA:0},LaneLine:{FP:0,QA:0}};
   const taskRows = `
     <div class="br-section">LIDAR</div>
     <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${t.LIDAR?.FP||0} tasks</span></div>
