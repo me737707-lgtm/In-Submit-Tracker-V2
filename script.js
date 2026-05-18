@@ -498,6 +498,16 @@ function renderSSView(d) {
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
 
+      <div class="kpi-card kpi-clickable" onclick='openQcShiftPanel("${label} Shift","${shift}","${fmtDate(D.datePicker.value)}")'>
+        <div class="kpi-icon-wrap kpi-purple"><i class="fas fa-user-tie"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">QC Breakdown</div>
+          <div class="kpi-val kpi-val-purple">${Object.keys(d.qcs||{}).length} QCs</div>
+          <div class="kpi-sub">Click for details</div>
+        </div>
+        <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
+      </div>
+
     </div>
   </div>`;
 
@@ -575,6 +585,145 @@ function openPendingPanel(roomBreakdown, totalPending) {
   openPanel('Pending Breakdown', 'By Room', html);
 }
 
+
+
+/* NEW: QC Shift Modal */
+async function openQcShiftPanel(label, shift, date) {
+  // Create modal if not exists
+  if (!document.getElementById('qcModal')) {
+    const modalHTML = `
+    <div id="qcModalMask" class="qc-modal-mask" onclick="closeQcModal()"></div>
+    <div id="qcModal" class="qc-modal">
+      <div class="qc-modal-header">
+        <div>
+          <p id="qcModalSub" class="qc-modal-sub"></p>
+          <h2 id="qcModalTitle" class="qc-modal-title">QC Breakdown</h2>
+        </div>
+        <button class="qc-modal-close" onclick="closeQcModal()"><i class="fas fa-xmark"></i></button>
+      </div>
+      <div id="qcModalContent" class="qc-modal-content">
+        <div class="qc-modal-spin"><div class="spin-ring"></div></div>
+      </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+  }
+
+  const modal = document.getElementById('qcModal');
+  const mask = document.getElementById('qcModalMask');
+  const title = document.getElementById('qcModalTitle');
+  const sub = document.getElementById('qcModalSub');
+  const content = document.getElementById('qcModalContent');
+
+  title.textContent = 'QC Breakdown';
+  sub.textContent = label + ' • ' + date;
+  content.innerHTML = '<div class="qc-modal-spin"><div class="spin-ring"></div></div>';
+
+  modal.classList.add('open');
+  mask.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  try {
+    const d = await api({action:'qcShiftBreakdown',shift,date}, 'qcshift_'+shift+'_'+date, 0);
+    if (!d.success) throw new Error(d.error || 'Failed');
+
+    const qcs = d.qcs || {};
+    const qcNames = Object.keys(qcs);
+
+    if (qcNames.length === 0) {
+      content.innerHTML = '<div class="qc-empty"><i class="fas fa-inbox"></i><p>No QC data found.</p></div>';
+      return;
+    }
+
+    // Calculate totals
+    let totalTasks = 0, totalLabelers = 0;
+    let totalLidarFP = 0, totalLidarQA = 0, totalLaneFP = 0, totalLaneQA = 0;
+
+    const qcCards = qcNames.map(qc => {
+      const q = qcs[qc];
+      totalTasks += q.total;
+      totalLabelers += q.uniqueUsers;
+      totalLidarFP += q.LIDAR?.FP || 0;
+      totalLidarQA += q.LIDAR?.QA || 0;
+      totalLaneFP += q.LaneLine?.FP || 0;
+      totalLaneQA += q.LaneLine?.QA || 0;
+
+      return `
+      <div class="qc-card">
+        <div class="qc-card-header">
+          <div class="qc-avatar">${qc[0].toUpperCase()}</div>
+          <div class="qc-info">
+            <div class="qc-name">${esc(qc)}</div>
+            <div class="qc-meta">${q.total} tasks • ${q.uniqueUsers} labelers</div>
+          </div>
+        </div>
+        <div class="qc-task-grid">
+          <div class="qc-task-item lidar-fp">
+            <span class="qc-task-label">LIDAR FP</span>
+            <span class="qc-task-val">${q.LIDAR?.FP || 0}</span>
+          </div>
+          <div class="qc-task-item lidar-qa">
+            <span class="qc-task-label">LIDAR QA</span>
+            <span class="qc-task-val">${q.LIDAR?.QA || 0}</span>
+          </div>
+          <div class="qc-task-item lane-fp">
+            <span class="qc-task-label">LaneLine FP</span>
+            <span class="qc-task-val">${q.LaneLine?.FP || 0}</span>
+          </div>
+          <div class="qc-task-item lane-qa">
+            <span class="qc-task-label">LaneLine QA</span>
+            <span class="qc-task-val">${q.LaneLine?.QA || 0}</span>
+          </div>
+        </div>
+        ${Object.keys(q.other || {}).length ? `
+        <div class="qc-other">
+          ${Object.entries(q.other).map(([k,v]) => `<span class="qc-other-badge">${k}: ${v}</span>`).join('')}
+        </div>` : ''}
+      </div>`;
+    }).join('');
+
+    content.innerHTML = `
+      <div class="qc-summary-bar">
+        <div class="qc-sum-item">
+          <span class="qc-sum-label">Total Tasks</span>
+          <span class="qc-sum-val">${totalTasks}</span>
+        </div>
+        <div class="qc-sum-item">
+          <span class="qc-sum-label">Total Labelers</span>
+          <span class="qc-sum-val">${totalLabelers}</span>
+        </div>
+        <div class="qc-sum-item">
+          <span class="qc-sum-label">LIDAR FP</span>
+          <span class="qc-sum-val blue">${totalLidarFP}</span>
+        </div>
+        <div class="qc-sum-item">
+          <span class="qc-sum-label">LIDAR QA</span>
+          <span class="qc-sum-val green">${totalLidarQA}</span>
+        </div>
+        <div class="qc-sum-item">
+          <span class="qc-sum-label">LaneLine FP</span>
+          <span class="qc-sum-val purple">${totalLaneFP}</span>
+        </div>
+        <div class="qc-sum-item">
+          <span class="qc-sum-label">LaneLine QA</span>
+          <span class="qc-sum-val yellow">${totalLaneQA}</span>
+        </div>
+      </div>
+      <div class="qc-cards-grid">
+        ${qcCards}
+      </div>`;
+
+  } catch(e) {
+    content.innerHTML = `<div class="qc-empty"><i class="fas fa-triangle-exclamation"></i><p>${e.message}</p></div>`;
+  }
+}
+
+function closeQcModal() {
+  const modal = document.getElementById('qcModal');
+  const mask = document.getElementById('qcModalMask');
+  if (modal) modal.classList.remove('open');
+  if (mask) mask.classList.remove('open');
+  document.body.style.overflow = '';
+}
 
 /* NEW: User type breakdown by room */
 function openUserTypePanel(title, sub, roomUserBreakdown, modality, pass) {
