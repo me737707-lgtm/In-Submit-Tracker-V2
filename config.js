@@ -2,7 +2,7 @@
    CONFIG.JS  v3.0
    ================================================ */
 const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbxmz0gT1rUXChCW42soPQXYtcpmir9reKAhnP9xKCvWii0adGkA7glu0WbQwVaAIisG/exec',
+  API_URL: 'https://script.google.com/macros/s/AKfycbxmz0gT1rUXChCW42soPQXYtcpmir9reKAhnP9xKCvWii0adGkA7glu0WbQwVaAIisG/exec ',
 
   REFRESH_INTERVAL:        30000,   // 30s auto-refresh
   REQUEST_TIMEOUT:         14000,   // 14s abort
