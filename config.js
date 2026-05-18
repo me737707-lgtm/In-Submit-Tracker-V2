@@ -1,12 +1,12 @@
 /* ================================================
-   CONFIG.JS  v2.1
+   CONFIG.JS  v2.2
    ================================================ */
 const CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycbxmz0gT1rUXChCW42soPQXYtcpmir9reKAhnP9xKCvWii0adGkA7glu0WbQwVaAIisG/exec',
 
-  REFRESH_INTERVAL:        30000,   // 30s auto-refresh
-  REQUEST_TIMEOUT:         14000,   // 14s abort
-  CLIENT_CACHE_TTL:        24000,   // 24s client cache
+  REFRESH_INTERVAL:        30000,
+  REQUEST_TIMEOUT:         14000,
+  CLIENT_CACHE_TTL:        24000,
   ANIMATION_STAGGER_DELAY: 55,
 
   ROLES: {
@@ -17,7 +17,6 @@ const CONFIG = {
 
   SHIFT_LABELS: { 'M':'Morning', 'N':'Night', 'ON':'Overnight' },
 
-  // Rooms that appear grouped under one header
   LOCATION_GROUPS: {
     'Saint Fatima': [
       'SF Floor 4 Room 1','SF Floor 4 Room 2','SF Floor 4 Room 3',
