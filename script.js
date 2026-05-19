@@ -808,13 +808,13 @@ function openUserTypePanel(title, sub, roomUserBreakdown, modality, pass) {
 
 /* Supervisor location breakdown */
 async function openSupervisorPanel(locName) {
-  openPanel('Location Breakdown', locName, null);
+  openCenterModal('Location Breakdown', locName, '<div class="qc-modal-spin"><div class="spin-ring"></div></div>');
   const date = fmtDate(D.datePicker.value);
   try {
     const d = await api({action:'supervisorBreakdown',date},'supbr_'+date, 0);
     if (!d.success) throw new Error(d.error);
     const loc = (d.locations||{})[locName];
-    if (!loc) { D.panelContent.innerHTML='<p class="br-empty">No data for this location.</p>'; return; }
+    if (!loc) { document.getElementById('centerModalContent').innerHTML='<p class="br-empty">No data for this location.</p>'; return; }
     const t = loc.tasks||{};
     const teamRows = Object.entries(loc.teams||{}).map(([tn,tm])=>`
       <div class="br-row">
@@ -823,7 +823,7 @@ async function openSupervisorPanel(locName) {
         <span class="br-pill pill-red">${tm.pending} pending</span>
       </div>`).join('');
 
-    D.panelContent.innerHTML = `
+    const html = `
       <div class="br-summary-card">
         <div class="br-summary-row">
           <span class="brs-label">Total Active</span><span class="brs-val">${loc.total}</span>
@@ -856,12 +856,17 @@ async function openSupervisorPanel(locName) {
         <div class="br-section" style="margin-top:16px">Other Tasks</div>
         ${Object.entries(t.other).map(([k,v])=>`<div class="br-row"><span class="br-label">${k}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('')}
       `:''}`;
-  } catch(e) { D.panelContent.innerHTML=`<div class="err-simple">${e.message}</div>`; }
+    const content = document.getElementById('centerModalContent');
+    if (content) content.innerHTML = html;
+  } catch(e) { 
+    const content = document.getElementById('centerModalContent');
+    if (content) content.innerHTML = `<div class="err-simple">${e.message}</div>`; 
+  }
 }
 
 /* NEW: Supervisor Room Breakdown */
 async function openRoomPanel(roomName) {
-  openPanel('Room Task Breakdown', roomName, null);
+  openCenterModal('Room Task Breakdown', roomName, '<div class="qc-modal-spin"><div class="spin-ring"></div></div>');
   const date = fmtDate(D.datePicker.value);
   try {
     const d = await api({action:'supervisorRoomBreakdown',room:roomName,date},'roombr_'+roomName.replace(/\s+/g,'_')+'_'+date, 0);
@@ -882,7 +887,7 @@ async function openRoomPanel(roomName) {
       </div>
     `).join('');
 
-    D.panelContent.innerHTML = `
+    const html = `
       <div class="br-summary-card">
         <div class="br-summary-row">
           <span class="brs-label">Total Tasks</span><span class="brs-val">${d.totalTasks||0}</span>
@@ -912,18 +917,23 @@ async function openRoomPanel(roomName) {
       `:''}
       <div class="br-section" style="margin-top:20px">Team Breakdown</div>
       ${teamRows||'<p class="br-empty">No team data.</p>'}`;
-  } catch(e) { D.panelContent.innerHTML=`<div class="err-simple">${e.message}</div>`; }
+    const content = document.getElementById('centerModalContent');
+    if (content) content.innerHTML = html;
+  } catch(e) { 
+    const content = document.getElementById('centerModalContent');
+    if (content) content.innerHTML = `<div class="err-simple">${e.message}</div>`; 
+  }
 }
 
 /* QC task breakdown */
 async function openQcPanel(qtcName) {
-  openPanel('Task Breakdown', qtcName, null);
+  openCenterModal('Task Breakdown', qtcName, '<div class="qc-modal-spin"><div class="spin-ring"></div></div>');
   const date = fmtDate(D.datePicker.value);
   const key  = 'qcbr_'+qtcName.replace(/\s+/g,'_')+'_'+date;
   try {
     const d = await api({action:'qcBreakdown',qtcName,date}, key, 0);
     if (!d.success) throw new Error(d.error);
-    D.panelContent.innerHTML = `
+    const html = `
       <div class="br-summary-card">
         <div class="br-summary-row">
           <span class="brs-label">Total Tasks</span><span class="brs-val">${d.totalTasks}</span>
@@ -950,7 +960,12 @@ async function openQcPanel(qtcName) {
         <div class="br-section" style="margin-top:16px">Other</div>
         ${Object.entries(d.other).map(([k,v])=>`<div class="br-row"><span class="br-label">${k}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('')}
       `:''}`;
-  } catch(e) { D.panelContent.innerHTML=`<div class="err-simple">${e.message}</div>`; }
+    const content = document.getElementById('centerModalContent');
+    if (content) content.innerHTML = html;
+  } catch(e) { 
+    const content = document.getElementById('centerModalContent');
+    if (content) content.innerHTML = `<div class="err-simple">${e.message}</div>`; 
+  }
 }
 
 /* ================================================
