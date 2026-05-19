@@ -1,8 +1,10 @@
 /* ================================================
-   CONFIG.JS  v3.0
+   CONFIG.JS  v3.1
    ================================================ */
 const CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/AKfycbxmz0gT1rUXChCW42soPQXYtcpmir9reKAhnP9xKCvWii0adGkA7glu0WbQwVaAIisG/exec',
+  // IMPORTANT: Replace this URL with your NEW deployment URL
+  // After deploying code.gs, copy the Web App URL here
+  API_URL: 'https://script.google.com/macros/s/AKfycbx2CofzmDfo__LoHMhhGJK9gORIDJMp7ygQW5gAfFYPX3VE5yKvx8X2buoPT11SXQkj/exec',
 
   REFRESH_INTERVAL:        30000,   // 30s auto-refresh
   REQUEST_TIMEOUT:         14000,   // 14s abort
