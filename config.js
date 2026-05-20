@@ -12,12 +12,22 @@ const CONFIG = {
   ANIMATION_STAGGER_DELAY: 55,
 
   ROLES: {
-    SUPERVISOR:       'supervisors',
-    SHIFT_SUPERVISOR: 'shiftSupervisor',
-    QC:               'Qc'
+    SUPERVISOR:       'supervisor',        // normalized lowercase
+    SHIFT_SUPERVISOR: 'shiftsupervisor',   // normalized lowercase (no spaces)
+    QC:               'qc'                 // normalized lowercase
   },
 
   SHIFT_LABELS: { 'M':'Morning', 'N':'Night', 'ON':'Overnight' },
+
+  // For display purposes - maps raw shift values to normalized
+  SHIFT_NORMALIZE: {
+    'morning': 'M',
+    'night': 'N', 
+    'overnight': 'ON',
+    'over night': 'ON',
+    'over night 12 h': 'ON',
+    'night 12 h': 'N'
+  },
 
   // Locations that appear as individual sections (not grouped)
   // Any other location starting with "SF " or containing "Saint Fatima" will go under Saint Fatima group
