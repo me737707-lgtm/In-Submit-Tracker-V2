@@ -391,7 +391,7 @@ function renderSupervisorDashboard(d) {
 
     // Pending
     html += `
-    <div class="kpi-card kpi-clickable" onclick='openPendingPanel(${JSON.stringify(loc.rooms||{})},${pendCount})'>
+    <div class="kpi-card kpi-clickable" onclick='openPendingPanel(${JSON.stringify(loc.rooms||{})},${pendCount},${JSON.stringify(loc.pendingByTeam||{})},${JSON.stringify(loc.pendingUsers||[])})'>
       <div class="kpi-icon-wrap kpi-red"><i class="fas fa-hourglass-half"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">Pending</div>
@@ -934,7 +934,7 @@ function renderSSView(d) {
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
 
-      <div class="kpi-card kpi-clickable" onclick='openPendingPanel(${JSON.stringify(d.roomBreakdown||{})},${d.totalPending||0})'>
+      <div class="kpi-card kpi-clickable" onclick='openPendingPanel(${JSON.stringify(d.roomBreakdown||{})},${d.totalPending||0},{},${JSON.stringify(d.pendingUsers||[])})'>
         <div class="kpi-icon-wrap kpi-red"><i class="fas fa-hourglass-half"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">Pending</div>
@@ -1110,7 +1110,8 @@ function closeCenterModal() {
 
 
 /* NEW: Pending breakdown by room */
-function openPendingPanel(roomBreakdown, totalPending) {
+function openPendingPanel(roomBreakdown, totalPending, pendingByTeam, pendingUsers) {
+  // Room breakdown section
   const roomRows = Object.entries(roomBreakdown).map(([room, r]) => {
     if ((r.pending || 0) <= 0) return '';
     return `
@@ -1126,6 +1127,45 @@ function openPendingPanel(roomBreakdown, totalPending) {
     </div>`;
   }).join('');
 
+  // Team breakdown section (NEW)
+  let teamRows = '';
+  if (pendingByTeam && Object.keys(pendingByTeam).length > 0) {
+    teamRows = Object.entries(pendingByTeam).map(([team, data]) => {
+      const userList = data.users.map(u => 
+        `<span class="pending-user-chip">${esc(u)}</span>`
+      ).join('');
+      return `
+      <div class="br-row team-pending-row">
+        <div class="team-pending-header">
+          <span class="br-label"><i class="fas fa-user-tie"></i>${esc(team)}</span>
+          <span class="br-pill pill-red">${data.count} pending</span>
+        </div>
+        <div class="pending-users-list">
+          ${userList}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Individual pending users list (NEW)
+  let userRows = '';
+  if (pendingUsers && pendingUsers.length > 0) {
+    userRows = pendingUsers.map((u, i) => `
+      <div class="br-row" style="animation-delay:${i * 30}ms">
+        <div style="display:flex;align-items:center;gap:12px;flex:1;">
+          <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--red),var(--yellow));display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;">${u.email[0].toUpperCase()}</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--t-1);">${esc(u.email)}</div>
+            <div style="font-size:11px;color:var(--t-4);display:flex;align-items:center;gap:6px;margin-top:2px;">
+              <i class="fas fa-user-tie" style="font-size:10px;"></i>${esc(u.team || 'Unknown')}
+            </div>
+          </div>
+        </div>
+        <span class="br-pill pill-red"><i class="fas fa-hourglass"></i> Pending</span>
+      </div>
+    `).join('');
+  }
+
   const totalActiveCount = totalPending + (roomBreakdown ? Object.values(roomBreakdown).reduce((sum, r) => sum + (r.submitted || 0), 0) : 0);
 
   const html = `
@@ -1139,10 +1179,21 @@ function openPendingPanel(roomBreakdown, totalPending) {
         <span class="brs-val">${totalActiveCount}</span>
       </div>
     </div>
-    <div class="br-section" style="margin-top:20px">Pending by Room</div>
-    ${roomRows || '<p class="br-empty">No pending users.</p>'}`;
 
-  openPanel('Pending Breakdown', 'By Room', html);
+    ${teamRows ? `
+    <div class="br-section" style="margin-top:20px">Pending by Team (QC)</div>
+    ${teamRows}
+    ` : ''}
+
+    <div class="br-section" style="margin-top:20px">Pending by Room</div>
+    ${roomRows || '<p class="br-empty">No pending users by room.</p>'}
+
+    ${userRows ? `
+    <div class="br-section" style="margin-top:20px">All Pending Users (${pendingUsers.length})</div>
+    ${userRows}
+    ` : ''}`;
+
+  openPanel('Pending Breakdown', 'By Team & Room', html);
 }
 
 
