@@ -306,7 +306,7 @@ async function fetchSupervisorDashboard(full) {
   }
 
   try {
-    const d = await api({action:'supervisorDashboard',date,locations}, key, 0);
+    const d = await api({action:'supervisorDashboard',date,locations,shift:S.user?.shift||''}, key, 0);
     console.log('Supervisor dashboard response:', d);
     if (!d.success) throw new Error(d.error || 'Failed');
     renderSupervisorDashboard(d);
@@ -359,7 +359,7 @@ function renderSupervisorDashboard(d) {
       <div class="loc-icon-wrap"><i class="fas fa-building"></i></div>
       <div class="loc-title-wrap">
         <h2 class="loc-name">${esc(locName)}</h2>
-        <span class="loc-sub">${loc.shift || ''} · ${Object.keys(loc.rooms||{}).length} rooms · ${att.totalActive || 0} active</span>
+        <span class="loc-sub">${CONFIG.SHIFT_LABELS[loc.shift] || loc.shift || ''} · ${Object.keys(loc.rooms||{}).length} rooms · ${att.totalActive || 0} active</span>
       </div>
     </div>`;
 
@@ -600,6 +600,8 @@ function openSubmittedUsersPanel(locName, submittedUsers, totalTasks, totalLabel
         <div>
           <div style="font-size:13px;font-weight:600;color:var(--t-1);">${esc(u.email)}</div>
           <div style="font-size:11px;color:var(--t-4);display:flex;align-items:center;gap:6px;margin-top:2px;">
+            <i class="fas fa-desktop" style="font-size:10px;"></i>${esc(u.pc || 'N/A')}
+            <span style="color:var(--br-2)">|</span>
             <i class="fas fa-user-tie" style="font-size:10px;"></i>${esc(u.team)}
           </div>
         </div>
@@ -1157,6 +1159,8 @@ function openPendingPanel(roomBreakdown, totalPending, pendingByTeam, pendingUse
           <div>
             <div style="font-size:13px;font-weight:600;color:var(--t-1);">${esc(u.email)}</div>
             <div style="font-size:11px;color:var(--t-4);display:flex;align-items:center;gap:6px;margin-top:2px;">
+              <i class="fas fa-desktop" style="font-size:10px;"></i>${esc(u.pc || 'N/A')}
+              <span style="color:var(--br-2)">|</span>
               <i class="fas fa-user-tie" style="font-size:10px;"></i>${esc(u.team || 'Unknown')}
             </div>
           </div>
