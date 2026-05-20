@@ -172,7 +172,11 @@ function initDashboard() {
 
   console.log('Role:', role, '| Shift:', shift, '| Permission:', S.user?.permission, '| Locations:', locations);
 
-  if (role === CONFIG.ROLES.SHIFT_SUPERVISOR) {
+  const roleLower = (role || '').toLowerCase();
+  const isShiftSupervisor = roleLower === 'shiftsupervisor' || roleLower === 'shift_supervisor' || roleLower === 'shift supervisor' || role === CONFIG.ROLES.SHIFT_SUPERVISOR;
+  const isSupervisor = roleLower === 'supervisor' || roleLower === 'supervisors' || role === CONFIG.ROLES.SUPERVISOR;
+
+  if (isShiftSupervisor) {
     console.log('👉 Rendering SHIFT SUPERVISOR view');
     D.mainContent.style.display = 'none';
     D.supervisorView.style.display = 'none';
@@ -181,7 +185,7 @@ function initDashboard() {
     if (D.locFilter) D.locFilter.style.display='none';
     fetchShiftSupervisor(true);
     S._timer = setInterval(()=>fetchShiftSupervisor(false), CONFIG.REFRESH_INTERVAL);
-  } else if (role === CONFIG.ROLES.SUPERVISOR) {
+  } else if (isSupervisor) {
     console.log('👉 Rendering SUPERVISOR DASHBOARD view');
     D.mainContent.style.display = 'none';
     D.ssView.style.display = 'none';
@@ -248,9 +252,9 @@ async function fetchMain(showLoader, manual) {
 
 function manualRefresh() {
   cDel('dash_'); cDel('supbr_'); cDel('ss_'); cDel('roombr_'); cDel('supdash_');
-  const role = S.user?.role;
-  if (role===CONFIG.ROLES.SHIFT_SUPERVISOR) fetchShiftSupervisor(true);
-  else if (role===CONFIG.ROLES.SUPERVISOR) fetchSupervisorDashboard(true);
+  const roleLower = (S.user?.role || '').toLowerCase();
+  if (roleLower === 'shiftsupervisor') fetchShiftSupervisor(true);
+  else if (roleLower === 'supervisor') fetchSupervisorDashboard(true);
   else fetchMain(true,true);
 }
 
@@ -258,9 +262,10 @@ function manualRefresh() {
 function filterForUser(data) {
   const u = S.user;
   if (!u) return data;
-  if (u.role===CONFIG.ROLES.SUPERVISOR) return data;
+  const userRoleLower = (u.role || '').toLowerCase();
+  if (userRoleLower === 'supervisor' || userRoleLower === 'supervisors' || u.role===CONFIG.ROLES.SUPERVISOR) return data;
 
-  if (u.role===CONFIG.ROLES.QC || u.permission==='only') {
+  if (userRoleLower === 'qc' || u.role===CONFIG.ROLES.QC || u.permission==='only') {
     const out={};
     for (const [shift,locs] of Object.entries(data))
       for (const [loc,teams] of Object.entries(locs))
@@ -1429,8 +1434,9 @@ function renderDashboard() {
   const selShift = D.shiftFilter.value;
   const selLoc   = D.locFilter.value;
   const data     = S.filtered;
-  const isSup    = S.user?.role===CONFIG.ROLES.SUPERVISOR;
-  const isQC     = S.user?.role===CONFIG.ROLES.QC;
+  const userRoleLower = (S.user?.role || '').toLowerCase();
+  const isSup    = userRoleLower === 'supervisor' || userRoleLower === 'supervisors' || S.user?.role===CONFIG.ROLES.SUPERVISOR;
+  const isQC     = userRoleLower === 'qc' || S.user?.role===CONFIG.ROLES.QC;
 
   D.mainContent.innerHTML='';
 
