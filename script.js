@@ -591,7 +591,6 @@ function buildRoomRows(rooms) {
   }).join('');
 }
 
-async 
 /* NEW: Show submitted users with team info */
 function openSubmittedUsersPanel(locName, submittedUsers, totalTasks, totalLabelers) {
   const userRows = submittedUsers.map((u, i) => `
@@ -701,7 +700,7 @@ function openActiveUsersPanel(locName, submittedUsers, pendingUsers) {
   openPanel('Active Users', locName, html);
 }
 
-function openSupervisorQcPanel(locName, date) {
+async function openSupervisorQcPanel(locName, date) {
   openCenterModal('QC Breakdown', locName, '<div class="qc-modal-spin"><div class="spin-ring"></div></div>');
   const key = 'supdash_' + (S.user?.locations||'').replace(/[^a-zA-Z0-9_-]/g,'_') + '_' + date;
   try {
