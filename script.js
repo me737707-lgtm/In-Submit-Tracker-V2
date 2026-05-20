@@ -591,7 +591,117 @@ function buildRoomRows(rooms) {
   }).join('');
 }
 
-async function openSupervisorQcPanel(locName, date) {
+async 
+/* NEW: Show submitted users with team info */
+function openSubmittedUsersPanel(locName, submittedUsers, totalTasks, totalLabelers) {
+  const userRows = submittedUsers.map((u, i) => `
+    <div class="br-row" style="animation-delay:${i * 30}ms">
+      <div style="display:flex;align-items:center;gap:12px;flex:1;">
+        <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--blue),var(--green));display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;">${u.email[0].toUpperCase()}</div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--t-1);">${esc(u.email)}</div>
+          <div style="font-size:11px;color:var(--t-4);display:flex;align-items:center;gap:6px;margin-top:2px;">
+            <i class="fas fa-user-tie" style="font-size:10px;"></i>${esc(u.team)}
+          </div>
+        </div>
+      </div>
+      <span class="br-pill pill-green"><i class="fas fa-check"></i> Submitted</span>
+    </div>
+  `).join('');
+
+  const html = `
+    <div class="br-summary-card">
+      <div class="br-summary-row">
+        <span class="brs-label">Total Submitted</span>
+        <span class="brs-val c-green">${submittedUsers.length}</span>
+      </div>
+      <div class="br-summary-row">
+        <span class="brs-label">Total Tasks</span>
+        <span class="brs-val">${totalTasks || 0}</span>
+      </div>
+      <div class="br-summary-row">
+        <span class="brs-label">Unique Labelers</span>
+        <span class="brs-val">${totalLabelers || 0}</span>
+      </div>
+    </div>
+    <div class="br-section" style="margin-top:20px">Submitted Users (${submittedUsers.length})</div>
+    ${userRows || '<p class="br-empty">No submitted users.</p>'}`;
+
+  openPanel('Submitted Users', locName, html);
+}
+
+/* NEW: Show pending users */
+function openPendingUsersPanel(locName, pendingUsers) {
+  const userRows = pendingUsers.map((u, i) => `
+    <div class="br-row" style="animation-delay:${i * 30}ms">
+      <div style="display:flex;align-items:center;gap:12px;flex:1;">
+        <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--red),var(--yellow));display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;">${u.email[0].toUpperCase()}</div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--t-1);">${esc(u.email)}</div>
+          <div style="font-size:11px;color:var(--t-4);display:flex;align-items:center;gap:6px;margin-top:2px;">
+            <i class="fas fa-clock" style="font-size:10px;"></i>Pending submission
+          </div>
+        </div>
+      </div>
+      <span class="br-pill pill-red"><i class="fas fa-hourglass"></i> Pending</span>
+    </div>
+  `).join('');
+
+  const html = `
+    <div class="br-summary-card">
+      <div class="br-summary-row">
+        <span class="brs-label">Total Pending</span>
+        <span class="brs-val c-red">${pendingUsers.length}</span>
+      </div>
+    </div>
+    <div class="br-section" style="margin-top:20px">Pending Users (${pendingUsers.length})</div>
+    ${userRows || '<p class="br-empty">All users have submitted!</p>'}`;
+
+  openPanel('Pending Users', locName, html);
+}
+
+/* NEW: Show active users with their status */
+function openActiveUsersPanel(locName, submittedUsers, pendingUsers) {
+  const allActive = [
+    ...submittedUsers.map(u => ({ ...u, status: 'submitted' })),
+    ...pendingUsers.map(u => ({ ...u, status: 'pending' }))
+  ];
+
+  const userRows = allActive.map((u, i) => `
+    <div class="br-row" style="animation-delay:${i * 30}ms">
+      <div style="display:flex;align-items:center;gap:12px;flex:1;">
+        <div style="width:32px;height:32px;border-radius:8px;background:${u.status === 'submitted' ? 'linear-gradient(135deg,var(--blue),var(--green))' : 'linear-gradient(135deg,var(--red),var(--yellow))'};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;">${u.email[0].toUpperCase()}</div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--t-1);">${esc(u.email)}</div>
+          ${u.team && u.team !== 'N/A' ? `<div style="font-size:11px;color:var(--t-4);display:flex;align-items:center;gap:6px;margin-top:2px;"><i class="fas fa-user-tie" style="font-size:10px;"></i>${esc(u.team)}</div>` : ''}
+        </div>
+      </div>
+      <span class="br-pill ${u.status === 'submitted' ? 'pill-green' : 'pill-red'}"><i class="fas fa-${u.status === 'submitted' ? 'check' : 'hourglass'}"></i> ${u.status === 'submitted' ? 'Submitted' : 'Pending'}</span>
+    </div>
+  `).join('');
+
+  const html = `
+    <div class="br-summary-card">
+      <div class="br-summary-row">
+        <span class="brs-label">Total Active</span>
+        <span class="brs-val">${allActive.length}</span>
+      </div>
+      <div class="br-summary-row">
+        <span class="brs-label">Submitted</span>
+        <span class="brs-val c-green">${submittedUsers.length}</span>
+      </div>
+      <div class="br-summary-row">
+        <span class="brs-label">Pending</span>
+        <span class="brs-val c-red">${pendingUsers.length}</span>
+      </div>
+    </div>
+    <div class="br-section" style="margin-top:20px">Active Users (${allActive.length})</div>
+    ${userRows || '<p class="br-empty">No active users.</p>'}`;
+
+  openPanel('Active Users', locName, html);
+}
+
+function openSupervisorQcPanel(locName, date) {
   openCenterModal('QC Breakdown', locName, '<div class="qc-modal-spin"><div class="spin-ring"></div></div>');
   const key = 'supdash_' + (S.user?.locations||'').replace(/[^a-zA-Z0-9_-]/g,'_') + '_' + date;
   try {
