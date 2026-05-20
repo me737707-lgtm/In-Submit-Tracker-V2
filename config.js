@@ -1,5 +1,5 @@
 /* ================================================
-   CONFIG.JS  v3.1
+   CONFIG.JS  v3.2
    ================================================ */
 const CONFIG = {
   // IMPORTANT: Replace this URL with your NEW deployment URL
@@ -18,6 +18,15 @@ const CONFIG = {
   },
 
   SHIFT_LABELS: { 'M':'Morning', 'N':'Night', 'ON':'Overnight' },
+
+  // Locations that appear as individual sections (not grouped)
+  // Any other location starting with "SF " or containing "Saint Fatima" will go under Saint Fatima group
+  SUPERVISOR_LOCATIONS: {
+    '106': '106',
+    '102': '102', 
+    '108': '108',
+    'Saint Fatima': 'Saint Fatima'
+  },
 
   // Rooms that appear grouped under one header
   LOCATION_GROUPS: {
