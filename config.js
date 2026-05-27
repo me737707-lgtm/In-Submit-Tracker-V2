@@ -1,5 +1,5 @@
 /* ================================================
-   CONFIG.JS  v3.2
+   CONFIG.JS  v3.4
    ================================================ */
 const CONFIG = {
   // IMPORTANT: Replace this URL with your NEW deployment URL
