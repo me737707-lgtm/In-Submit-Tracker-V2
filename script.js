@@ -1,6 +1,6 @@
 /* ================================================
-   SCRIPT.JS  v4.0  —  Queue Breakdown + Speed x20 Engine
-   Depends on config.js loaded first
+   SCRIPT.JS  v3.3  —  Full Feature Engine (Fixed)
+   Depends on config.js loaded first (no defer)
    ================================================ */
 
 /* ── State ─────────────────────────────────────── */
@@ -10,14 +10,13 @@ const S = {
   user: null, users: [], loggedIn: false,
   _cache: {}, _cacheTs: {}, _timer: null,
   _loginRetries: 0,
-  _maxLoginRetries: 3,
-  _searchTimeout: null
+  _maxLoginRetries: 3
 };
 
-/* ── DOM refs ──────────────────────────────────── */
+/* ── DOM refs (populated after DOMContentLoaded) ─ */
 const D = {};
 
-/* ── Client cache ──────────────────────────────── */
+/* ── Client cache ───────────────────────────────── */
 function cGet(k) {
   const ttl = CONFIG.CLIENT_CACHE_TTL;
   const ts  = S._cacheTs[k];
@@ -31,7 +30,7 @@ function cDel(prefix){
   });
 }
 
-/* ── API fetch with cache + retry ──────────────── */
+/* ── API fetch with cache ───────────────────────── */
 async function api(params, cacheKey, retryCount = 0) {
   if (cacheKey) { const h=cGet(cacheKey); if(h) return h; }
   const url  = CONFIG.API_URL+'?'+new URLSearchParams(params);
@@ -47,24 +46,12 @@ async function api(params, cacheKey, retryCount = 0) {
   } catch(e){ 
     clearTimeout(tid); 
     if (retryCount < 2 && (e.name === 'TypeError' || e.name === 'AbortError' || e.message.includes('Failed to fetch'))) {
+      console.warn(`API retry ${retryCount + 1} for`, params);
       await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)));
       return api(params, cacheKey, retryCount + 1);
     }
     throw e; 
   }
-}
-
-/* ── Helpers for new task structure ────────────── */
-/* Backward compatible: handles both {count, queues} and plain numbers */
-function getTaskCount(taskData) {
-  if (!taskData) return 0;
-  if (typeof taskData === 'number') return taskData;
-  return taskData.count || 0;
-}
-function getTaskQueues(taskData) {
-  if (!taskData) return {};
-  if (typeof taskData === 'number') return {};
-  return taskData.queues || {};
 }
 
 /* ================================================
@@ -76,10 +63,14 @@ async function loadUsers() {
     if (d.success && d.users?.length) {
       S.users = d.users;
       S._loginRetries = 0;
+      console.log('✅ Users loaded:', S.users.length);
       return true;
     }
     return false;
-  } catch(e){ return false; }
+  } catch(e){ 
+    console.warn('Users load failed:',e.message); 
+    return false;
+  }
 }
 
 async function handleLogin(e) {
@@ -91,6 +82,7 @@ async function handleLogin(e) {
   if (!S.users.length) {
     let loaded = false;
     for (let i = 0; i < S._maxLoginRetries; i++) {
+      console.log(`Loading users attempt ${i + 1}...`);
       loaded = await loadUsers();
       if (loaded) break;
       await new Promise(r => setTimeout(r, 800));
@@ -103,12 +95,16 @@ async function handleLogin(e) {
           S.user = d;
           S.loggedIn = true;
           S.users = [{username:d.username,password:pass,role:d.role,permission:d.permission,shift:d.shift,locations:d.locations||''}];
+          console.log('✅ Direct login success:', d.role, d.permission, d.shift, d.locations);
           D.loginOverlay.style.display = 'none';
           renderUserChip(d);
           initDashboard();
           return;
         }
-      } catch(e2) {}
+      } catch(e2) {
+        console.warn('Direct login fallback failed:', e2.message);
+      }
+
       setLoginState('error','Server unavailable — check connection');
       return;
     }
@@ -120,6 +116,7 @@ async function handleLogin(e) {
 
   if (found) {
     S.user = found; S.loggedIn = true;
+    console.log('✅ Login success:', found.role, found.permission, found.shift, found.locations);
     D.loginOverlay.style.display = 'none';
     renderUserChip(found);
     initDashboard();
@@ -136,8 +133,8 @@ function setLoginState(state, msg) {
 }
 
 function renderUserChip(user) {
-  const roleMap   = {supervisor:'Supervisor',supervisors:'Supervisor',shiftsupervisor:'Shift Supervisor',qc:'QC'};
-  const colorMap  = {supervisor:'chip-sup',supervisors:'chip-sup',shiftsupervisor:'chip-shift',qc:'chip-qc'};
+  const roleMap   = {supervisors:'Supervisor',shiftSupervisor:'Shift Supervisor',Qc:'QC'};
+  const colorMap  = {supervisors:'chip-sup',shiftSupervisor:'chip-shift',Qc:'chip-qc'};
   D.userAvatar.textContent  = user.username[0].toUpperCase();
   D.userNameLabel.textContent = user.username;
   D.userRoleLabel.textContent = roleMap[user.role]||user.role;
@@ -149,7 +146,6 @@ function handleLogout() {
   S.user=null; S.loggedIn=false; S.raw={}; S.filtered={};
   S.firstLoad=true; S._loginRetries=0; cDel();
   if (S._timer) { clearInterval(S._timer); S._timer=null; }
-  if (S._searchTimeout) { clearTimeout(S._searchTimeout); S._searchTimeout=null; }
   D.userChip.style.display    = 'none';
   D.loginOverlay.style.display= 'flex';
   D.loginBtn.style.display    = 'flex';
@@ -160,23 +156,28 @@ function handleLogout() {
   D.supervisorView.style.display = 'none';
   D.mainContent.innerHTML    = '';
   D.mainContent.style.display= 'block';
-  closeCenterModal();
-  closeQcModal();
 }
 
 /* ================================================
    INIT
    ================================================ */
 function initDashboard() {
+  console.log('🚀 initDashboard called, user:', S.user);
   setStatus('loading');
   D.datePicker.value = new Date().toISOString().split('T')[0];
 
   const role = S.user?.role;
-  const roleLower = (role || '').toLowerCase().replace(/\s+/g,'');
-  const isShiftSupervisor = roleLower === 'shiftsupervisor' || role === CONFIG.ROLES.SHIFT_SUPERVISOR;
+  const shift = S.user?.shift || S.user?.permission;
+  const locations = S.user?.locations || '';
+
+  console.log('Role:', role, '| Shift:', shift, '| Permission:', S.user?.permission, '| Locations:', locations);
+
+  const roleLower = (role || '').toLowerCase();
+  const isShiftSupervisor = roleLower === 'shiftsupervisor' || roleLower === 'shift_supervisor' || roleLower === 'shift supervisor' || role === CONFIG.ROLES.SHIFT_SUPERVISOR;
   const isSupervisor = roleLower === 'supervisor' || roleLower === 'supervisors' || role === CONFIG.ROLES.SUPERVISOR;
 
   if (isShiftSupervisor) {
+    console.log('👉 Rendering SHIFT SUPERVISOR view');
     D.mainContent.style.display = 'none';
     D.supervisorView.style.display = 'none';
     D.ssView.style.display      = 'block';
@@ -185,6 +186,7 @@ function initDashboard() {
     fetchShiftSupervisor(true);
     S._timer = setInterval(()=>fetchShiftSupervisor(false), CONFIG.REFRESH_INTERVAL);
   } else if (isSupervisor) {
+    console.log('👉 Rendering SUPERVISOR DASHBOARD view');
     D.mainContent.style.display = 'none';
     D.ssView.style.display = 'none';
     D.supervisorView.style.display = 'block';
@@ -193,6 +195,7 @@ function initDashboard() {
     fetchSupervisorDashboard(true);
     S._timer = setInterval(()=>fetchSupervisorDashboard(false), CONFIG.REFRESH_INTERVAL);
   } else {
+    console.log('👉 Rendering MAIN DASHBOARD view');
     D.mainContent.style.display = 'block';
     D.ssView.style.display      = 'none';
     D.supervisorView.style.display = 'none';
@@ -208,7 +211,7 @@ function initDashboard() {
   });
 }
 
-/* ── Status pill ───────────────────────────────── */
+/* ── Status pill ─────────────────────────────────── */
 function setStatus(s) {
   D.statusPill.className = 'status-pill '+s;
   D.statusLabel.textContent = {live:'Live',error:'Error',loading:'Connecting'}[s]||s;
@@ -248,18 +251,18 @@ async function fetchMain(showLoader, manual) {
 }
 
 function manualRefresh() {
-  cDel();
-  const roleLower = (S.user?.role || '').toLowerCase().replace(/\s+/g,'');
+  cDel('dash_'); cDel('supbr_'); cDel('ss_'); cDel('roombr_'); cDel('supdash_');
+  const roleLower = (S.user?.role || '').toLowerCase();
   if (roleLower === 'shiftsupervisor') fetchShiftSupervisor(true);
-  else if (roleLower === 'supervisor' || roleLower === 'supervisors') fetchSupervisorDashboard(true);
+  else if (roleLower === 'supervisor') fetchSupervisorDashboard(true);
   else fetchMain(true,true);
 }
 
-/* ── Permission filter ─────────────────────────── */
+/* ── Permission filter ───────────────────────────── */
 function filterForUser(data) {
   const u = S.user;
   if (!u) return data;
-  const userRoleLower = (u.role || '').toLowerCase().replace(/\s+/g,'');
+  const userRoleLower = (u.role || '').toLowerCase();
   if (userRoleLower === 'supervisor' || userRoleLower === 'supervisors' || u.role===CONFIG.ROLES.SUPERVISOR) return data;
 
   if (userRoleLower === 'qc' || u.role===CONFIG.ROLES.QC || u.permission==='only') {
@@ -280,14 +283,16 @@ function filterForUser(data) {
 }
 
 /* ================================================
-   SUPERVISOR DASHBOARD (with Queue Breakdown)
+   SUPERVISOR DASHBOARD (NEW)
    ================================================ */
 async function fetchSupervisorDashboard(full) {
   const locations = S.user?.locations || '';
   if (!locations) {
+    console.error('❌ No locations configured for supervisor');
     D.supervisorView.innerHTML = `<div class="err-simple"><i class="fas fa-triangle-exclamation"></i> 
       <strong>Locations not configured.</strong><br><br>
-      Your account needs locations assigned in the Login Users sheet (column F).
+      Your account needs locations assigned in the Login Users sheet (column F).<br><br>
+      Please ask the admin to set your Locations column.
     </div>`;
     setStatus('error');
     return;
@@ -302,21 +307,25 @@ async function fetchSupervisorDashboard(full) {
 
   try {
     const d = await api({action:'supervisorDashboard',date,locations,shift:S.user?.shift||''}, key, 0);
+    console.log('Supervisor dashboard response:', d);
     if (!d.success) throw new Error(d.error || 'Failed');
     renderSupervisorDashboard(d);
     setStatus('live');
   } catch(e) {
+    console.error('❌ Supervisor dashboard error:', e);
     D.supervisorView.innerHTML = `<div class="err-simple"><i class="fas fa-triangle-exclamation"></i> ${e.message}</div>`;
     setStatus('error');
   }
 }
 
 function renderSupervisorDashboard(d) {
+  console.log('renderSupervisorDashboard called with:', d);
   const date = D.datePicker.value;
   const locations = d.locations || {};
 
   let html = `<div class="ss-wrap">`;
 
+  // Header
   html += `
   <div class="ss-header">
     <div>
@@ -331,6 +340,7 @@ function renderSupervisorDashboard(d) {
     </div>
   </div>`;
 
+  // Render each location as a section with KPI cards
   const locNames = Object.keys(locations);
 
   locNames.forEach((locName, locIdx) => {
@@ -339,9 +349,11 @@ function renderSupervisorDashboard(d) {
     const pct = att.totalActive > 0 ? Math.round((loc.totalSubmitted / att.totalActive) * 100) : 0;
     const pendCount = loc.totalPending || 0;
     const t = loc.tasks || {};
+    const u = loc.overallUserBreakdown || {LIDAR:{FP:0,QA:0},LaneLine:{FP:0,QA:0}};
 
-    html += `<div class="loc-section" style="animation-delay:${locIdx * 100}ms">`;
+    html += `<div class="loc-section" style="margin-bottom:32px;animation-delay:${locIdx * 100}ms">`;
 
+    // Location header
     html += `
     <div class="loc-header" style="margin-bottom:20px;">
       <div class="loc-icon-wrap"><i class="fas fa-building"></i></div>
@@ -351,8 +363,10 @@ function renderSupervisorDashboard(d) {
       </div>
     </div>`;
 
+    // KPI Grid for this location
     html += `<div class="kpi-grid">`;
 
+    // Total Active Users
     html += `
     <div class="kpi-card kpi-clickable" onclick='openPanel("Attendance Overview","${esc(locName)}",${JSON.stringify(buildAttendanceRows(att))})'>
       <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-users"></i></div>
@@ -363,17 +377,19 @@ function renderSupervisorDashboard(d) {
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
+    // Total Submitted
     html += `
     <div class="kpi-card kpi-clickable" onclick='openPanel("Task Breakdown","${esc(locName)}",${JSON.stringify(buildTaskRows(t))})'>
       <div class="kpi-icon-wrap kpi-green"><i class="fas fa-circle-check"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">Total Submitted</div>
         <div class="kpi-val kpi-val-green">${loc.totalSubmitted||0}</div>
-        <div class="kpi-sub">${getTaskCount(t)||0} tasks · ${t.uniqueUsers||0} labelers</div>
+        <div class="kpi-sub">${t.total||0} tasks · ${t.uniqueUsers||0} labelers</div>
       </div>
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
+    // Pending
     html += `
     <div class="kpi-card kpi-clickable" onclick='openPendingPanel(${JSON.stringify(loc.rooms||{})},${pendCount},${JSON.stringify(loc.pendingByTeam||{})},${JSON.stringify(loc.pendingUsers||[])})'>
       <div class="kpi-icon-wrap kpi-red"><i class="fas fa-hourglass-half"></i></div>
@@ -384,8 +400,13 @@ function renderSupervisorDashboard(d) {
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
-    html += `<div class="kpi-card kpi-ring">${ringHTML(pct)}</div>`;
+    // Progress Ring
+    html += `
+    <div class="kpi-card kpi-ring">
+      ${ringHTML(pct)}
+    </div>`;
 
+    // Absent
     if (att.totalAbsent > 0) {
       html += `
       <div class="kpi-card">
@@ -397,6 +418,7 @@ function renderSupervisorDashboard(d) {
       </div>`;
     }
 
+    // Empty
     if (att.totalEmpty > 0) {
       html += `
       <div class="kpi-card">
@@ -408,6 +430,7 @@ function renderSupervisorDashboard(d) {
       </div>`;
     }
 
+    // Training
     if (att.totalTraining > 0) {
       const trainingHTML = Object.entries(att.trainingByLevel||{}).map(([l,c])=>`<span class="train-badge">${l}: ${c}</span>`).join('');
       html += `
@@ -421,6 +444,7 @@ function renderSupervisorDashboard(d) {
       </div>`;
     }
 
+    // Room Breakdown
     html += `
     <div class="kpi-card kpi-clickable" onclick='openPanel("Room Breakdown — Detailed","${esc(locName)}",${JSON.stringify(buildRoomRows(loc.rooms||{}))})'>
       <div class="kpi-icon-wrap kpi-purple"><i class="fas fa-building"></i></div>
@@ -432,54 +456,55 @@ function renderSupervisorDashboard(d) {
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
-    // ⚡ NEW: LIDAR FP with Queue Breakdown
+    // LIDAR First Pass
     html += `
-    <div class="kpi-card kpi-clickable" onclick='openModalWithQueueBreakdown("LIDAR First Pass","${esc(locName)}",${JSON.stringify(t.LIDAR?.FP||{count:0,queues:{}})})'>
+    <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("LIDAR First Pass","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown||{})},"LIDAR","FP")'>
       <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-cube"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">LIDAR First Pass</div>
-        <div class="kpi-val kpi-val-blue">${getTaskCount(t.LIDAR?.FP)||0}</div>
-        <div class="kpi-sub">${Object.keys(getTaskQueues(t.LIDAR?.FP)).length} queues</div>
+        <div class="kpi-val kpi-val-blue">${u.LIDAR?.FP||0}</div>
+        <div class="kpi-sub">labelers</div>
       </div>
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
     // LIDAR QA
     html += `
-    <div class="kpi-card kpi-clickable" onclick='openModalWithQueueBreakdown("LIDAR QA","${esc(locName)}",${JSON.stringify(t.LIDAR?.QA||{count:0,queues:{}})})'>
+    <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("LIDAR QA","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown||{})},"LIDAR","QA")'>
       <div class="kpi-icon-wrap kpi-green"><i class="fas fa-cube"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">LIDAR QA</div>
-        <div class="kpi-val kpi-val-green">${getTaskCount(t.LIDAR?.QA)||0}</div>
-        <div class="kpi-sub">${Object.keys(getTaskQueues(t.LIDAR?.QA)).length} queues</div>
+        <div class="kpi-val kpi-val-green">${u.LIDAR?.QA||0}</div>
+        <div class="kpi-sub">labelers</div>
       </div>
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
-    // Lane Line FP
+    // Lane Line First Pass
     html += `
-    <div class="kpi-card kpi-clickable" onclick='openModalWithQueueBreakdown("Lane Line First Pass","${esc(locName)}",${JSON.stringify(t.LaneLine?.FP||{count:0,queues:{}})})'>
+    <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("Lane Line First Pass","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown||{})},"LaneLine","FP")'>
       <div class="kpi-icon-wrap kpi-purple"><i class="fas fa-road"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">Lane Line First Pass</div>
-        <div class="kpi-val kpi-val-purple">${getTaskCount(t.LaneLine?.FP)||0}</div>
-        <div class="kpi-sub">${Object.keys(getTaskQueues(t.LaneLine?.FP)).length} queues</div>
+        <div class="kpi-val kpi-val-purple">${u.LaneLine?.FP||0}</div>
+        <div class="kpi-sub">labelers</div>
       </div>
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
     // Lane Line QA
     html += `
-    <div class="kpi-card kpi-clickable" onclick='openModalWithQueueBreakdown("Lane Line QA","${esc(locName)}",${JSON.stringify(t.LaneLine?.QA||{count:0,queues:{}})})'>
+    <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("Lane Line QA","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown||{})},"LaneLine","QA")'>
       <div class="kpi-icon-wrap kpi-yellow"><i class="fas fa-road"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">Lane Line QA</div>
-        <div class="kpi-val kpi-val-yellow">${getTaskCount(t.LaneLine?.QA)||0}</div>
-        <div class="kpi-sub">${Object.keys(getTaskQueues(t.LaneLine?.QA)).length} queues</div>
+        <div class="kpi-val kpi-val-yellow">${u.LaneLine?.QA||0}</div>
+        <div class="kpi-sub">labelers</div>
       </div>
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
+    // QC Breakdown
     html += `
     <div class="kpi-card kpi-clickable" onclick='openSupervisorQcPanel("${esc(locName)}","${fmtDate(D.datePicker.value)}")'>
       <div class="kpi-icon-wrap kpi-purple"><i class="fas fa-user-tie"></i></div>
@@ -491,62 +516,14 @@ function renderSupervisorDashboard(d) {
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
-    html += `</div></div>`;
+    html += `</div>`; // end kpi-grid
+    html += `</div>`; // end loc-section
   });
 
-  html += `</div>`;
-  D.supervisorView.innerHTML = html;
-}
+  html += `</div>`; // end ss-wrap
 
-/* ⚡ NEW: Open Modal with Collapsible Queue Breakdown */
-function openModalWithQueueBreakdown(title, sub, data) {
-  const totalCount = getTaskCount(data);
-  const queues = getTaskQueues(data);
-  const queueNames = Object.keys(queues);
-  
-  let html = `
-    <div class="br-summary-card">
-      <div class="br-summary-row">
-        <span class="brs-label">Total Tasks</span>
-        <span class="brs-val c-green">${totalCount}</span>
-      </div>
-      <div class="br-summary-row">
-        <span class="brs-label">Unique Queues</span>
-        <span class="brs-val">${queueNames.length}</span>
-      </div>
-    </div>
-    <div class="br-section" style="margin-top:20px">Queue Breakdown</div>
-  `;
-  
-  if (queueNames.length === 0) {
-    html += `<p class="br-empty"><i class="fas fa-inbox" style="margin-right:8px;"></i>No queue data found for this category.</p>`;
-  } else {
-    const sortedQueues = queueNames.sort((a, b) => queues[b] - queues[a]);
-    html += `<div class="queue-list">`;
-    sortedQueues.forEach((queue, idx) => {
-      const percentage = totalCount > 0 ? Math.round((queues[queue] / totalCount) * 100) : 0;
-      html += `
-        <div class="queue-row" style="animation-delay:${idx * 30}ms">
-          <div class="queue-row-header">
-            <div class="queue-row-icon"><i class="fas fa-layer-group"></i></div>
-            <div class="queue-row-info">
-              <div class="queue-row-name">${esc(queue)}</div>
-              <div class="queue-row-bar">
-                <div class="queue-row-bar-fill" style="width:${percentage}%"></div>
-              </div>
-            </div>
-          </div>
-          <div class="queue-row-stats">
-            <span class="br-pill pill-blue">${queues[queue]} tasks</span>
-            <span class="queue-row-pct">${percentage}%</span>
-          </div>
-        </div>
-      `;
-    });
-    html += `</div>`;
-  }
-  
-  openPanel(title, sub, html);
+  D.supervisorView.innerHTML = html;
+  console.log('✅ Supervisor dashboard rendered successfully');
 }
 
 function buildAttendanceRows(att) {
@@ -578,22 +555,13 @@ function buildAttendanceRows(att) {
 }
 
 function buildTaskRows(t) {
-  const lidarFP = getTaskCount(t.LIDAR?.FP);
-  const lidarQA = getTaskCount(t.LIDAR?.QA);
-  const laneFP = getTaskCount(t.LaneLine?.FP);
-  const laneQA = getTaskCount(t.LaneLine?.QA);
-  const lidarFPQueues = Object.keys(getTaskQueues(t.LIDAR?.FP)).length;
-  const lidarQAQueues = Object.keys(getTaskQueues(t.LIDAR?.QA)).length;
-  const laneFPQueues = Object.keys(getTaskQueues(t.LaneLine?.FP)).length;
-  const laneQAQueues = Object.keys(getTaskQueues(t.LaneLine?.QA)).length;
-
   let html = `
     <div class="br-section">LIDAR</div>
-    <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${lidarFP} tasks · ${lidarFPQueues} queues</span></div>
-    <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${lidarQA} tasks · ${lidarQAQueues} queues</span></div>
+    <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${t.LIDAR?.FP||0} tasks</span></div>
+    <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${t.LIDAR?.QA||0} tasks</span></div>
     <div class="br-section" style="margin-top:12px">Lane Line</div>
-    <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${laneFP} tasks · ${laneFPQueues} queues</span></div>
-    <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${laneQA} tasks · ${laneQAQueues} queues</span></div>`;
+    <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${t.LaneLine?.FP||0} tasks</span></div>
+    <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${t.LaneLine?.QA||0} tasks</span></div>`;
   if (Object.keys(t.other||{}).length) {
     html += `<div class="br-section" style="margin-top:12px">Other</div>` +
       Object.entries(t.other||{}).map(([k,v])=>`<div class="br-row"><span class="br-label">${k}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('');
@@ -623,7 +591,7 @@ function buildRoomRows(rooms) {
   }).join('');
 }
 
-/* Submitted / Pending / Active Panels */
+/* NEW: Show submitted users with team info */
 function openSubmittedUsersPanel(locName, submittedUsers, totalTasks, totalLabelers) {
   const userRows = submittedUsers.map((u, i) => `
     <div class="br-row" style="animation-delay:${i * 30}ms">
@@ -663,6 +631,7 @@ function openSubmittedUsersPanel(locName, submittedUsers, totalTasks, totalLabel
   openPanel('Submitted Users', locName, html);
 }
 
+/* NEW: Show pending users */
 function openPendingUsersPanel(locName, pendingUsers) {
   const userRows = pendingUsers.map((u, i) => `
     <div class="br-row" style="animation-delay:${i * 30}ms">
@@ -692,6 +661,7 @@ function openPendingUsersPanel(locName, pendingUsers) {
   openPanel('Pending Users', locName, html);
 }
 
+/* NEW: Show active users with their status */
 function openActiveUsersPanel(locName, submittedUsers, pendingUsers) {
   const allActive = [
     ...submittedUsers.map(u => ({ ...u, status: 'submitted' })),
@@ -756,16 +726,11 @@ async function openSupervisorQcPanel(locName, date) {
 
     const qcCards = qcNames.map(qc => {
       const q = qcDetails[qc];
-      const lFP = getTaskCount(q.LIDAR?.FP);
-      const lQA = getTaskCount(q.LIDAR?.QA);
-      const lnFP = getTaskCount(q.LaneLine?.FP);
-      const lnQA = getTaskCount(q.LaneLine?.QA);
-      
-      totalTasks += q.total || 0;
-      totalLidarFP += lFP;
-      totalLidarQA += lQA;
-      totalLaneFP += lnFP;
-      totalLaneQA += lnQA;
+      totalTasks += q.total;
+      totalLidarFP += q.LIDAR?.FP || 0;
+      totalLidarQA += q.LIDAR?.QA || 0;
+      totalLaneFP += q.LaneLine?.FP || 0;
+      totalLaneQA += q.LaneLine?.QA || 0;
 
       return `
       <div class="qc-card">
@@ -773,25 +738,25 @@ async function openSupervisorQcPanel(locName, date) {
           <div class="qc-avatar">${qc[0].toUpperCase()}</div>
           <div class="qc-info">
             <div class="qc-name">${esc(qc)}</div>
-            <div class="qc-meta">${q.total || 0} tasks</div>
+            <div class="qc-meta">${q.total} tasks</div>
           </div>
         </div>
         <div class="qc-task-grid">
           <div class="qc-task-item lidar-fp">
             <span class="qc-task-label">LIDAR FP</span>
-            <span class="qc-task-val">${lFP}</span>
+            <span class="qc-task-val">${q.LIDAR?.FP || 0}</span>
           </div>
           <div class="qc-task-item lidar-qa">
             <span class="qc-task-label">LIDAR QA</span>
-            <span class="qc-task-val">${lQA}</span>
+            <span class="qc-task-val">${q.LIDAR?.QA || 0}</span>
           </div>
           <div class="qc-task-item lane-fp">
             <span class="qc-task-label">LaneLine FP</span>
-            <span class="qc-task-val">${lnFP}</span>
+            <span class="qc-task-val">${q.LaneLine?.FP || 0}</span>
           </div>
           <div class="qc-task-item lane-qa">
             <span class="qc-task-label">LaneLine QA</span>
-            <span class="qc-task-val">${lnQA}</span>
+            <span class="qc-task-val">${q.LaneLine?.QA || 0}</span>
           </div>
         </div>
         ${Object.keys(q.other || {}).length ? `
@@ -837,10 +802,15 @@ async function openSupervisorQcPanel(locName, date) {
    ================================================ */
 async function fetchShiftSupervisor(full) {
   const shift = S.user?.shift || S.user?.permission;
+  console.log('fetchShiftSupervisor called, shift:', shift);
+
   if (!shift || shift === 'all') {
+    console.error('❌ No valid shift found for user. shift:', shift, 'user:', S.user);
     D.ssView.innerHTML = `<div class="err-simple"><i class="fas fa-triangle-exclamation"></i> 
       <strong>Shift not configured correctly.</strong><br><br>
-      Your account needs a shift assignment (M, N, or ON).
+      Your account needs a shift assignment (M, N, or ON).<br>
+      Current value: "${shift || 'empty'}"<br><br>
+      Please ask the admin to set your Shift column (E) to M, N, or ON in the Login Users sheet.
     </div>`;
     setStatus('error');
     return;
@@ -851,16 +821,19 @@ async function fetchShiftSupervisor(full) {
   if (full) { D.ssView.innerHTML='<div class="ss-skeleton"><div class="spin-ring"></div><p>Loading shift data…</p></div>'; }
   try {
     const d = await api({action:'shiftSupervisor',shift,date}, key, 0);
+    console.log('Shift supervisor response:', d);
     if (!d.success) throw new Error(d.error||'Failed');
     renderSSView(d);
     setStatus('live');
   } catch(e) {
+    console.error('❌ Shift supervisor error:', e);
     D.ssView.innerHTML=`<div class="err-simple"><i class="fas fa-triangle-exclamation"></i> ${e.message}</div>`;
     setStatus('error');
   }
 }
 
 function renderSSView(d) {
+  console.log('renderSSView called with:', d);
   const shift      = d.shift;
   const label      = CONFIG.SHIFT_LABELS[shift]||shift;
   const att        = d.attendance || {};
@@ -889,22 +862,14 @@ function renderSSView(d) {
   }).join('');
 
   const t = d.tasks||{};
-  const lidarFP = getTaskCount(t.LIDAR?.FP);
-  const lidarQA = getTaskCount(t.LIDAR?.QA);
-  const laneFP = getTaskCount(t.LaneLine?.FP);
-  const laneQA = getTaskCount(t.LaneLine?.QA);
-  const lidarFPQueues = Object.keys(getTaskQueues(t.LIDAR?.FP)).length;
-  const lidarQAQueues = Object.keys(getTaskQueues(t.LIDAR?.QA)).length;
-  const laneFPQueues = Object.keys(getTaskQueues(t.LaneLine?.FP)).length;
-  const laneQAQueues = Object.keys(getTaskQueues(t.LaneLine?.QA)).length;
-
+  const u = d.overallUserBreakdown || {LIDAR:{FP:0,QA:0},LaneLine:{FP:0,QA:0}};
   const taskRows = `
     <div class="br-section">LIDAR</div>
-    <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${lidarFP} tasks · ${lidarFPQueues} queues</span></div>
-    <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${lidarQA} tasks · ${lidarQAQueues} queues</span></div>
+    <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${t.LIDAR?.FP||0} tasks</span></div>
+    <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${t.LIDAR?.QA||0} tasks</span></div>
     <div class="br-section" style="margin-top:12px">Lane Line</div>
-    <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${laneFP} tasks · ${laneFPQueues} queues</span></div>
-    <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${laneQA} tasks · ${laneQAQueues} queues</span></div>
+    <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${t.LaneLine?.FP||0} tasks</span></div>
+    <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${t.LaneLine?.QA||0} tasks</span></div>
     ${Object.keys(t.other||{}).length?`<div class="br-section" style="margin-top:12px">Other</div>`+
       Object.entries(t.other||{}).map(([k,v])=>`<div class="br-row"><span class="br-label">${k}</span><span class="br-pill pill-yellow">${v}</span></div>`).join(''):''}
   `;
@@ -966,7 +931,7 @@ function renderSSView(d) {
         <div class="kpi-body">
           <div class="kpi-label">Total Submitted</div>
           <div class="kpi-val kpi-val-green">${d.totalSubmitted||0}</div>
-          <div class="kpi-sub">${getTaskCount(t)||0} tasks · ${t.uniqueUsers||0} labelers</div>
+          <div class="kpi-sub">${t.total||0} tasks · ${t.uniqueUsers||0} labelers</div>
         </div>
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
@@ -1022,42 +987,42 @@ function renderSSView(d) {
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
 
-      <div class="kpi-card kpi-clickable" onclick='openModalWithQueueBreakdown("LIDAR First Pass","${label} Shift",${JSON.stringify(t.LIDAR?.FP||{count:0,queues:{}})})'>
+      <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("LIDAR First Pass","${label} Shift",${JSON.stringify(d.roomUserBreakdown||{})},"LIDAR","FP")'>
         <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-cube"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">LIDAR First Pass</div>
-          <div class="kpi-val kpi-val-blue">${lidarFP}</div>
-          <div class="kpi-sub">${lidarFPQueues} queues</div>
+          <div class="kpi-val kpi-val-blue">${u.LIDAR?.FP||0}</div>
+          <div class="kpi-sub">labelers</div>
         </div>
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
 
-      <div class="kpi-card kpi-clickable" onclick='openModalWithQueueBreakdown("LIDAR QA","${label} Shift",${JSON.stringify(t.LIDAR?.QA||{count:0,queues:{}})})'>
+      <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("LIDAR QA","${label} Shift",${JSON.stringify(d.roomUserBreakdown||{})},"LIDAR","QA")'>
         <div class="kpi-icon-wrap kpi-green"><i class="fas fa-cube"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">LIDAR QA</div>
-          <div class="kpi-val kpi-val-green">${lidarQA}</div>
-          <div class="kpi-sub">${lidarQAQueues} queues</div>
+          <div class="kpi-val kpi-val-green">${u.LIDAR?.QA||0}</div>
+          <div class="kpi-sub">labelers</div>
         </div>
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
 
-      <div class="kpi-card kpi-clickable" onclick='openModalWithQueueBreakdown("Lane Line First Pass","${label} Shift",${JSON.stringify(t.LaneLine?.FP||{count:0,queues:{}})})'>
+      <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("Lane Line First Pass","${label} Shift",${JSON.stringify(d.roomUserBreakdown||{})},"LaneLine","FP")'>
         <div class="kpi-icon-wrap kpi-purple"><i class="fas fa-road"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">Lane Line First Pass</div>
-          <div class="kpi-val kpi-val-purple">${laneFP}</div>
-          <div class="kpi-sub">${laneFPQueues} queues</div>
+          <div class="kpi-val kpi-val-purple">${u.LaneLine?.FP||0}</div>
+          <div class="kpi-sub">labelers</div>
         </div>
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
 
-      <div class="kpi-card kpi-clickable" onclick='openModalWithQueueBreakdown("Lane Line QA","${label} Shift",${JSON.stringify(t.LaneLine?.QA||{count:0,queues:{}})})'>
+      <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("Lane Line QA","${label} Shift",${JSON.stringify(d.roomUserBreakdown||{})},"LaneLine","QA")'>
         <div class="kpi-icon-wrap kpi-yellow"><i class="fas fa-road"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">Lane Line QA</div>
-          <div class="kpi-val kpi-val-yellow">${laneQA}</div>
-          <div class="kpi-sub">${laneQAQueues} queues</div>
+          <div class="kpi-val kpi-val-yellow">${u.LaneLine?.QA||0}</div>
+          <div class="kpi-sub">labelers</div>
         </div>
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
@@ -1074,6 +1039,8 @@ function renderSSView(d) {
 
     </div>
   </div>`;
+
+  console.log('✅ Shift Supervisor view rendered successfully');
 }
 
 function ringHTML(pct) {
@@ -1143,9 +1110,11 @@ function closeCenterModal() {
   document.body.style.overflow = '';
 }
 
-/* Pending breakdown by room */
+
+/* NEW: Pending breakdown by room */
 function openPendingPanel(roomBreakdown, totalPending, pendingByTeam, pendingUsers) {
-  const roomRows = Object.entries(roomBreakdown || {}).map(([room, r]) => {
+  // Room breakdown section
+  const roomRows = Object.entries(roomBreakdown).map(([room, r]) => {
     if ((r.pending || 0) <= 0) return '';
     return `
     <div class="br-row room-detail-row">
@@ -1160,6 +1129,7 @@ function openPendingPanel(roomBreakdown, totalPending, pendingByTeam, pendingUse
     </div>`;
   }).join('');
 
+  // Team breakdown section (NEW)
   let teamRows = '';
   if (pendingByTeam && Object.keys(pendingByTeam).length > 0) {
     teamRows = Object.entries(pendingByTeam).map(([team, data]) => {
@@ -1179,6 +1149,7 @@ function openPendingPanel(roomBreakdown, totalPending, pendingByTeam, pendingUse
     }).join('');
   }
 
+  // Individual pending users list (NEW)
   let userRows = '';
   if (pendingUsers && pendingUsers.length > 0) {
     userRows = pendingUsers.map((u, i) => `
@@ -1229,7 +1200,8 @@ function openPendingPanel(roomBreakdown, totalPending, pendingByTeam, pendingUse
   openPanel('Pending Breakdown', 'By Team & Room', html);
 }
 
-/* QC Shift Modal */
+
+/* NEW: QC Shift Modal */
 async function openQcShiftPanel(label, shift, date) {
   if (!document.getElementById('qcModal')) {
     const modalHTML = `
@@ -1280,17 +1252,12 @@ async function openQcShiftPanel(label, shift, date) {
 
     const qcCards = qcNames.map(qc => {
       const q = qcs[qc];
-      const lFP = getTaskCount(q.LIDAR?.FP);
-      const lQA = getTaskCount(q.LIDAR?.QA);
-      const lnFP = getTaskCount(q.LaneLine?.FP);
-      const lnQA = getTaskCount(q.LaneLine?.QA);
-      
-      totalTasks += q.total || 0;
-      totalLabelers += q.uniqueUsers || 0;
-      totalLidarFP += lFP;
-      totalLidarQA += lQA;
-      totalLaneFP += lnFP;
-      totalLaneQA += lnQA;
+      totalTasks += q.total;
+      totalLabelers += q.uniqueUsers;
+      totalLidarFP += q.LIDAR?.FP || 0;
+      totalLidarQA += q.LIDAR?.QA || 0;
+      totalLaneFP += q.LaneLine?.FP || 0;
+      totalLaneQA += q.LaneLine?.QA || 0;
 
       return `
       <div class="qc-card">
@@ -1298,25 +1265,25 @@ async function openQcShiftPanel(label, shift, date) {
           <div class="qc-avatar">${qc[0].toUpperCase()}</div>
           <div class="qc-info">
             <div class="qc-name">${esc(qc)}</div>
-            <div class="qc-meta">${q.total || 0} tasks • ${q.uniqueUsers || 0} labelers</div>
+            <div class="qc-meta">${q.total} tasks • ${q.uniqueUsers} labelers</div>
           </div>
         </div>
         <div class="qc-task-grid">
           <div class="qc-task-item lidar-fp">
             <span class="qc-task-label">LIDAR FP</span>
-            <span class="qc-task-val">${lFP}</span>
+            <span class="qc-task-val">${q.LIDAR?.FP || 0}</span>
           </div>
           <div class="qc-task-item lidar-qa">
             <span class="qc-task-label">LIDAR QA</span>
-            <span class="qc-task-val">${lQA}</span>
+            <span class="qc-task-val">${q.LIDAR?.QA || 0}</span>
           </div>
           <div class="qc-task-item lane-fp">
             <span class="qc-task-label">LaneLine FP</span>
-            <span class="qc-task-val">${lnFP}</span>
+            <span class="qc-task-val">${q.LaneLine?.FP || 0}</span>
           </div>
           <div class="qc-task-item lane-qa">
             <span class="qc-task-label">LaneLine QA</span>
-            <span class="qc-task-val">${lnQA}</span>
+            <span class="qc-task-val">${q.LaneLine?.QA || 0}</span>
           </div>
         </div>
         ${Object.keys(q.other || {}).length ? `
@@ -1370,14 +1337,14 @@ function closeQcModal() {
   document.body.style.overflow = '';
 }
 
-/* User type breakdown by room */
+/* NEW: User type breakdown by room */
 function openUserTypePanel(title, sub, roomUserBreakdown, modality, pass) {
-  const roomRows = Object.entries(roomUserBreakdown || {}).map(([room, r]) => {
+  const roomRows = Object.entries(roomUserBreakdown).map(([room, r]) => {
     let count = 0;
-    if (modality === 'LIDAR' && pass === 'FP') count = getTaskCount(r.LIDAR?.FP);
-    else if (modality === 'LIDAR' && pass === 'QA') count = getTaskCount(r.LIDAR?.QA);
-    else if (modality === 'LaneLine' && pass === 'FP') count = getTaskCount(r.LaneLine?.FP);
-    else if (modality === 'LaneLine' && pass === 'QA') count = getTaskCount(r.LaneLine?.QA);
+    if (modality === 'LIDAR' && pass === 'FP') count = r.LIDAR?.FP || 0;
+    else if (modality === 'LIDAR' && pass === 'QA') count = r.LIDAR?.QA || 0;
+    else if (modality === 'LaneLine' && pass === 'FP') count = r.LaneLine?.FP || 0;
+    else if (modality === 'LaneLine' && pass === 'QA') count = r.LaneLine?.QA || 0;
 
     if (count <= 0) return '';
 
@@ -1388,19 +1355,19 @@ function openUserTypePanel(title, sub, roomUserBreakdown, modality, pass) {
         <span class="br-pill pill-blue">${count} labelers</span>
       </div>
       <div class="room-detail-stats">
-        <span class="br-pill pill-green"><i class="fas fa-cube"></i>LIDAR FP: ${getTaskCount(r.LIDAR?.FP)}</span>
-        <span class="br-pill pill-green"><i class="fas fa-cube"></i>LIDAR QA: ${getTaskCount(r.LIDAR?.QA)}</span>
-        <span class="br-pill pill-purple"><i class="fas fa-road"></i>LaneLine FP: ${getTaskCount(r.LaneLine?.FP)}</span>
-        <span class="br-pill pill-yellow"><i class="fas fa-road"></i>LaneLine QA: ${getTaskCount(r.LaneLine?.QA)}</span>
+        <span class="br-pill pill-green"><i class="fas fa-cube"></i>LIDAR FP: ${r.LIDAR?.FP || 0}</span>
+        <span class="br-pill pill-green"><i class="fas fa-cube"></i>LIDAR QA: ${r.LIDAR?.QA || 0}</span>
+        <span class="br-pill pill-purple"><i class="fas fa-road"></i>LaneLine FP: ${r.LaneLine?.FP || 0}</span>
+        <span class="br-pill pill-yellow"><i class="fas fa-road"></i>LaneLine QA: ${r.LaneLine?.QA || 0}</span>
       </div>
     </div>`;
   }).join('');
 
-  const totalCount = Object.values(roomUserBreakdown || {}).reduce((sum, r) => {
-    if (modality === 'LIDAR' && pass === 'FP') return sum + getTaskCount(r.LIDAR?.FP);
-    if (modality === 'LIDAR' && pass === 'QA') return sum + getTaskCount(r.LIDAR?.QA);
-    if (modality === 'LaneLine' && pass === 'FP') return sum + getTaskCount(r.LaneLine?.FP);
-    if (modality === 'LaneLine' && pass === 'QA') return sum + getTaskCount(r.LaneLine?.QA);
+  const totalCount = Object.values(roomUserBreakdown).reduce((sum, r) => {
+    if (modality === 'LIDAR' && pass === 'FP') return sum + (r.LIDAR?.FP || 0);
+    if (modality === 'LIDAR' && pass === 'QA') return sum + (r.LIDAR?.QA || 0);
+    if (modality === 'LaneLine' && pass === 'FP') return sum + (r.LaneLine?.FP || 0);
+    if (modality === 'LaneLine' && pass === 'QA') return sum + (r.LaneLine?.QA || 0);
     return sum;
   }, 0);
 
@@ -1434,11 +1401,6 @@ async function openSupervisorPanel(locName) {
         <span class="br-pill pill-red">${tm.pending} pending</span>
       </div>`).join('');
 
-    const lidarFP = getTaskCount(t.LIDAR?.FP);
-    const lidarQA = getTaskCount(t.LIDAR?.QA);
-    const laneFP = getTaskCount(t.LaneLine?.FP);
-    const laneQA = getTaskCount(t.LaneLine?.QA);
-
     const html = `
       <div class="br-summary-card">
         <div class="br-summary-row">
@@ -1457,15 +1419,15 @@ async function openSupervisorPanel(locName) {
       <div class="br-task-grid">
         <div class="br-task-card lidar">
           <div class="brtc-label">LIDAR</div>
-          <div class="brtc-row"><span>First Pass</span><strong>${lidarFP}</strong></div>
-          <div class="brtc-row"><span>QA</span><strong>${lidarQA}</strong></div>
-          <div class="brtc-total">${lidarFP + lidarQA} total</div>
+          <div class="brtc-row"><span>First Pass</span><strong>${t.LIDAR?.FP||0}</strong></div>
+          <div class="brtc-row"><span>QA</span><strong>${t.LIDAR?.QA||0}</strong></div>
+          <div class="brtc-total">${(t.LIDAR?.FP||0)+(t.LIDAR?.QA||0)} total</div>
         </div>
         <div class="br-task-card laneline">
           <div class="brtc-label">Lane Line</div>
-          <div class="brtc-row"><span>First Pass</span><strong>${laneFP}</strong></div>
-          <div class="brtc-row"><span>QA</span><strong>${laneQA}</strong></div>
-          <div class="brtc-total">${laneFP + laneQA} total</div>
+          <div class="brtc-row"><span>First Pass</span><strong>${t.LaneLine?.FP||0}</strong></div>
+          <div class="brtc-row"><span>QA</span><strong>${t.LaneLine?.QA||0}</strong></div>
+          <div class="brtc-total">${(t.LaneLine?.FP||0)+(t.LaneLine?.QA||0)} total</div>
         </div>
       </div>
       ${Object.keys(t.other||{}).length?`
@@ -1480,7 +1442,7 @@ async function openSupervisorPanel(locName) {
   }
 }
 
-/* Supervisor Room Breakdown */
+/* NEW: Supervisor Room Breakdown */
 async function openRoomPanel(roomName) {
   openCenterModal('Room Task Breakdown', roomName, '<div class="qc-modal-spin"><div class="spin-ring"></div></div>');
   const date = fmtDate(D.datePicker.value);
@@ -1492,21 +1454,16 @@ async function openRoomPanel(roomName) {
       <div class="br-row">
         <span class="br-label"><i class="fas fa-user-tie"></i>${tn}</span>
         <span class="br-pill pill-blue">${tm.total} total</span>
-        <span class="br-pill pill-green">${getTaskCount(tm.LIDAR?.FP)+getTaskCount(tm.LaneLine?.FP)} FP</span>
-        <span class="br-pill pill-yellow">${getTaskCount(tm.LIDAR?.QA)+getTaskCount(tm.LaneLine?.QA)} QA</span>
+        <span class="br-pill pill-green">${(tm.LIDAR?.FP||0)+(tm.LaneLine?.FP||0)} FP</span>
+        <span class="br-pill pill-yellow">${(tm.LIDAR?.QA||0)+(tm.LaneLine?.QA||0)} QA</span>
       </div>
       <div class="br-task-mini">
-        <div class="br-mini-row"><span>LIDAR FP</span><strong>${getTaskCount(tm.LIDAR?.FP)}</strong></div>
-        <div class="br-mini-row"><span>LIDAR QA</span><strong>${getTaskCount(tm.LIDAR?.QA)}</strong></div>
-        <div class="br-mini-row"><span>LaneLine FP</span><strong>${getTaskCount(tm.LaneLine?.FP)}</strong></div>
-        <div class="br-mini-row"><span>LaneLine QA</span><strong>${getTaskCount(tm.LaneLine?.QA)}</strong></div>
+        <div class="br-mini-row"><span>LIDAR FP</span><strong>${tm.LIDAR?.FP||0}</strong></div>
+        <div class="br-mini-row"><span>LIDAR QA</span><strong>${tm.LIDAR?.QA||0}</strong></div>
+        <div class="br-mini-row"><span>LaneLine FP</span><strong>${tm.LaneLine?.FP||0}</strong></div>
+        <div class="br-mini-row"><span>LaneLine QA</span><strong>${tm.LaneLine?.QA||0}</strong></div>
       </div>
     `).join('');
-
-    const lidarFP = getTaskCount(d.LIDAR?.FP);
-    const lidarQA = getTaskCount(d.LIDAR?.QA);
-    const laneFP = getTaskCount(d.LaneLine?.FP);
-    const laneQA = getTaskCount(d.LaneLine?.QA);
 
     const html = `
       <div class="br-summary-card">
@@ -1521,15 +1478,15 @@ async function openRoomPanel(roomName) {
       <div class="br-task-grid">
         <div class="br-task-card lidar">
           <div class="brtc-label">LIDAR</div>
-          <div class="brtc-row"><span>First Pass</span><strong>${lidarFP}</strong></div>
-          <div class="brtc-row"><span>QA</span><strong>${lidarQA}</strong></div>
-          <div class="brtc-total">${lidarFP + lidarQA} total</div>
+          <div class="brtc-row"><span>First Pass</span><strong>${d.LIDAR?.FP||0}</strong></div>
+          <div class="brtc-row"><span>QA</span><strong>${d.LIDAR?.QA||0}</strong></div>
+          <div class="brtc-total">${(d.LIDAR?.FP||0)+(d.LIDAR?.QA||0)} total</div>
         </div>
         <div class="br-task-card laneline">
           <div class="brtc-label">Lane Line</div>
-          <div class="brtc-row"><span>First Pass</span><strong>${laneFP}</strong></div>
-          <div class="brtc-row"><span>QA</span><strong>${laneQA}</strong></div>
-          <div class="brtc-total">${laneFP + laneQA} total</div>
+          <div class="brtc-row"><span>First Pass</span><strong>${d.LaneLine?.FP||0}</strong></div>
+          <div class="brtc-row"><span>QA</span><strong>${d.LaneLine?.QA||0}</strong></div>
+          <div class="brtc-total">${(d.LaneLine?.FP||0)+(d.LaneLine?.QA||0)} total</div>
         </div>
       </div>
       ${Object.keys(d.other||{}).length?`
@@ -1554,15 +1511,6 @@ async function openQcPanel(qtcName) {
   try {
     const d = await api({action:'qcBreakdown',qtcName,date}, key, 0);
     if (!d.success) throw new Error(d.error);
-    const lidarFP = getTaskCount(d.LIDAR?.FP);
-    const lidarQA = getTaskCount(d.LIDAR?.QA);
-    const laneFP = getTaskCount(d.LaneLine?.FP);
-    const laneQA = getTaskCount(d.LaneLine?.QA);
-    const lidarFPQueues = Object.keys(getTaskQueues(d.LIDAR?.FP));
-    const lidarQAQueues = Object.keys(getTaskQueues(d.LIDAR?.QA));
-    const laneFPQueues = Object.keys(getTaskQueues(d.LaneLine?.FP));
-    const laneQAQueues = Object.keys(getTaskQueues(d.LaneLine?.QA));
-
     const html = `
       <div class="br-summary-card">
         <div class="br-summary-row">
@@ -1575,15 +1523,15 @@ async function openQcPanel(qtcName) {
       <div class="br-task-grid" style="margin-top:20px">
         <div class="br-task-card lidar">
           <div class="brtc-label">LIDAR</div>
-          <div class="brtc-row"><span>First Pass (${lidarFPQueues.length} queues)</span><strong>${lidarFP}</strong></div>
-          <div class="brtc-row"><span>QA (${lidarQAQueues.length} queues)</span><strong>${lidarQA}</strong></div>
-          <div class="brtc-total">${lidarFP + lidarQA} total</div>
+          <div class="brtc-row"><span>First Pass</span><strong>${d.LIDAR?.FP||0}</strong></div>
+          <div class="brtc-row"><span>QA</span><strong>${d.LIDAR?.QA||0}</strong></div>
+          <div class="brtc-total">${(d.LIDAR?.FP||0)+(d.LIDAR?.QA||0)} total</div>
         </div>
         <div class="br-task-card laneline">
           <div class="brtc-label">Lane Line</div>
-          <div class="brtc-row"><span>First Pass (${laneFPQueues.length} queues)</span><strong>${laneFP}</strong></div>
-          <div class="brtc-row"><span>QA (${laneQAQueues.length} queues)</span><strong>${laneQA}</strong></div>
-          <div class="brtc-total">${laneFP + laneQA} total</div>
+          <div class="brtc-row"><span>First Pass</span><strong>${d.LaneLine?.FP||0}</strong></div>
+          <div class="brtc-row"><span>QA</span><strong>${d.LaneLine?.QA||0}</strong></div>
+          <div class="brtc-total">${(d.LaneLine?.FP||0)+(d.LaneLine?.QA||0)} total</div>
         </div>
       </div>
       ${Object.keys(d.other||{}).length?`
@@ -1633,13 +1581,9 @@ function rebuildFilters() {
   });
 }
 
-/* ⚡ Debounced search for performance */
 function handleSearch() {
-  if (S._searchTimeout) clearTimeout(S._searchTimeout);
-  S._searchTimeout = setTimeout(() => {
-    S.search = D.searchInput.value.toLowerCase().trim();
-    renderDashboard();
-  }, 200);
+  S.search = D.searchInput.value.toLowerCase().trim();
+  renderDashboard();
 }
 
 function matches(email, pc) {
@@ -1654,7 +1598,7 @@ function renderDashboard() {
   const selShift = D.shiftFilter.value;
   const selLoc   = D.locFilter.value;
   const data     = S.filtered;
-  const userRoleLower = (S.user?.role || '').toLowerCase().replace(/\s+/g,'');
+  const userRoleLower = (S.user?.role || '').toLowerCase();
   const isSup    = userRoleLower === 'supervisor' || userRoleLower === 'supervisors' || S.user?.role===CONFIG.ROLES.SUPERVISOR;
   const isQC     = userRoleLower === 'qc' || S.user?.role===CONFIG.ROLES.QC;
 
@@ -1899,5 +1843,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     toast:         document.getElementById('toast'),
   });
 
+  console.log('🚀 App initialized, loading users...');
   await loadUsers();
+  console.log('Users loaded:', S.users.length);
 });
