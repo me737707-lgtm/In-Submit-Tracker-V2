@@ -1,6 +1,7 @@
 /* ================================================
-   STYLE.CSS  v3.1  —  Google + Apple Design System
+   STYLE.CSS  v4.0  —  Google + Apple Design System
    Dark mode · Material You colours · SF Pro spacing
+   + Queue Breakdown Enhancement
    ================================================ */
 
 /* ── Tokens ──────────────────────────────────────── */
@@ -229,7 +230,7 @@ a{ color:inherit; text-decoration:none; }
 .pill-gray  { background:var(--gray-bg);   color:var(--gray);   border:1px solid var(--gray-br); }
 .br-empty{ color:var(--t-4); font-size:13px; padding:20px 0; text-align:center; }
 
-/* Room detail rows (NEW) */
+/* Room detail rows */
 .room-detail-row{
   flex-direction:column;
   align-items:stretch;
@@ -270,7 +271,7 @@ a{ color:inherit; text-decoration:none; }
   margin-bottom:8px;
 }
 
-/* Task mini grid (NEW) */
+/* Task mini grid */
 .br-task-mini{
   display:grid;
   grid-template-columns:1fr 1fr;
@@ -375,7 +376,7 @@ a{ color:inherit; text-decoration:none; }
 .search-box input::placeholder{ color:var(--t-4); }
 .search-box input:focus{ border-color:var(--blue); box-shadow:0 0 0 3px rgba(96,165,250,.15); }
 
-/* FIXED: Dropdown styling for dark mode */
+/* Dropdown styling for dark mode */
 .ctrl-select,.ctrl-date{
   background:var(--sf-1); 
   border:1px solid var(--br-1); 
@@ -386,7 +387,6 @@ a{ color:inherit; text-decoration:none; }
   outline:none;
   cursor:pointer; 
   transition:border-color .2s;
-  /* Ensure dropdown options are visible in dark mode */
   color-scheme: dark;
 }
 .ctrl-select{ 
@@ -398,7 +398,6 @@ a{ color:inherit; text-decoration:none; }
 }
 .ctrl-select:focus,.ctrl-date:focus{ border-color:var(--blue); }
 
-/* FIXED: Dropdown options styling - ensure dark background */
 .ctrl-select option,
 .ctrl-select optgroup{
   background:var(--bg-2) !important;
@@ -412,7 +411,6 @@ a{ color:inherit; text-decoration:none; }
   background:var(--blue-bg) !important;
   color:var(--blue) !important;
 }
-/* Ensure dropdown list itself is dark */
 .ctrl-select optgroup{
   background:var(--bg-3) !important;
   color:var(--t-2) !important;
@@ -886,7 +884,7 @@ a{ color:inherit; text-decoration:none; }
 }
 
 /* ================================================
-   PENDING TEAM BREAKDOWN (NEW)
+   PENDING TEAM BREAKDOWN
    ================================================ */
 .team-pending-row{
   flex-direction:column;
@@ -915,4 +913,152 @@ a{ color:inherit; text-decoration:none; }
   color:var(--red);
   border:1px solid var(--red-br);
   white-space:nowrap;
+}
+
+/* ================================================
+   ⚡ QUEUE BREAKDOWN (NEW - Speed x20)
+   Professional Modal with Progress Bars
+   ================================================ */
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.queue-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  background: var(--bg-2);
+  border: 1px solid var(--br-1);
+  border-radius: var(--r-lg);
+  transition: all .25s var(--ease);
+  animation: slideRight .4s var(--ease) backwards;
+}
+
+.queue-row:hover {
+  background: var(--sf-hover);
+  border-color: var(--br-2);
+  transform: translateX(4px);
+  box-shadow: var(--sh-sm);
+}
+
+.queue-row-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.queue-row-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-md);
+  background: linear-gradient(135deg, var(--blue-bg), var(--purple-bg));
+  border: 1px solid var(--blue-br);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--blue);
+  font-size: 14px;
+  flex-shrink: 0;
+  transition: all .2s var(--ease);
+}
+
+.queue-row:hover .queue-row-icon {
+  background: linear-gradient(135deg, var(--blue), var(--purple));
+  color: #fff;
+  transform: rotate(-8deg) scale(1.05);
+}
+
+.queue-row-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.queue-row-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -.01em;
+}
+
+/* Progress bar */
+.queue-row-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--sf-2);
+  border-radius: 99px;
+  overflow: hidden;
+  position: relative;
+}
+
+.queue-row-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue), var(--green));
+  border-radius: 99px;
+  transition: width 1s var(--ease);
+  position: relative;
+  overflow: hidden;
+}
+
+.queue-row-bar-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255,255,255,.3),
+    transparent
+  );
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.queue-row-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.queue-row-pct {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--t-1);
+  min-width: 40px;
+  text-align: right;
+  letter-spacing: -.02em;
+}
+
+/* Mobile responsive for queue breakdown */
+@media(max-width:640px) {
+  .queue-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px;
+  }
+  .queue-row-stats {
+    justify-content: space-between;
+    width: 100%;
+  }
+  .queue-row-name {
+    font-size: 12px;
+  }
 }
