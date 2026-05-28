@@ -1,5 +1,5 @@
 /* ================================================
-   CONFIG.JS  v4.0  —  Optimized Configuration
+   CONFIG.JS  v3.2
    ================================================ */
 const CONFIG = {
   // IMPORTANT: Replace this URL with your NEW deployment URL
@@ -7,8 +7,8 @@ const CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycbx2CofzmDfo__LoHMhhGJK9gORIDJMp7ygQW5gAfFYPX3VE5yKvx8X2buoPT11SXQkj/exec',
 
   REFRESH_INTERVAL:        30000,   // 30s auto-refresh
-  REQUEST_TIMEOUT:         20000,   // 20s abort (increased for large data)
-  CLIENT_CACHE_TTL:        30000,   // 30s client cache (optimized)
+  REQUEST_TIMEOUT:         14000,   // 14s abort
+  CLIENT_CACHE_TTL:        24000,   // 24s client cache
   ANIMATION_STAGGER_DELAY: 55,
 
   ROLES: {
@@ -30,6 +30,7 @@ const CONFIG = {
   },
 
   // Locations that appear as individual sections (not grouped)
+  // Any other location starting with "SF " or containing "Saint Fatima" will go under Saint Fatima group
   SUPERVISOR_LOCATIONS: {
     '106': '106',
     '102': '102', 
