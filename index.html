@@ -1,112 +1,120 @@
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Submit Tracker</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Submit Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
 <base target="_self">
 <base target="_blank">
 </head>
 <body>
+
 <!-- LOGIN -->
 <div id="loginOverlay" class="login-overlay">
-<div class="login-card">
-<div class="login-logo"><i class="fas fa-chart-line"></i></div>
-<h1 class="login-title">Submit Tracker</h1>
-<p class="login-sub">Live Operations Dashboard</p>
-<form id="loginForm" onsubmit="handleLogin(event)">
-<div class="field-group">
-<label class="field-label">Username</label>
-<div class="field-wrap"><i class="fas fa-user field-icon"></i>
-<input type="text" id="username" class="field-input" placeholder="Enter username" required autocomplete="username">
+  <div class="login-card">
+    <div class="login-logo"><i class="fas fa-chart-line"></i></div>
+    <h1 class="login-title">Submit Tracker</h1>
+    <p class="login-sub">Live Operations Dashboard</p>
+    <form id="loginForm" onsubmit="handleLogin(event)">
+      <div class="field-group">
+        <label class="field-label">Username</label>
+        <div class="field-wrap"><i class="fas fa-user field-icon"></i>
+          <input type="text" id="username" class="field-input" placeholder="Enter username" required autocomplete="username">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Password</label>
+        <div class="field-wrap"><i class="fas fa-lock field-icon"></i>
+          <input type="password" id="password" class="field-input" placeholder="Enter password" required autocomplete="current-password">
+        </div>
+      </div>
+      <div id="loginError" class="login-error" style="display:none">
+        <i class="fas fa-exclamation-circle"></i><span id="loginErrorMsg">Invalid credentials</span>
+      </div>
+      <button type="submit" id="loginBtn" class="login-btn">
+        <i class="fas fa-arrow-right-to-bracket"></i> Sign In
+      </button>
+    </form>
+    <div id="loginSpinner" class="login-spinner" style="display:none">
+      <div class="spin-ring"></div><span>Authenticating…</span>
+    </div>
+  </div>
 </div>
-</div>
-<div class="field-group">
-<label class="field-label">Password</label>
-<div class="field-wrap"><i class="fas fa-lock field-icon"></i>
-<input type="password" id="password" class="field-input" placeholder="Enter password" required autocomplete="current-password">
-</div>
-</div>
-<div id="loginError" class="login-error" style="display:none">
-<i class="fas fa-exclamation-circle"></i><span id="loginErrorMsg">Invalid credentials</span>
-</div>
-<button type="submit" id="loginBtn" class="login-btn">
-<i class="fas fa-arrow-right-to-bracket"></i> Sign In
-</button>
-</form>
-<div id="loginSpinner" class="login-spinner" style="display:none">
-<div class="spin-ring"></div><span>Authenticating…</span>
-</div>
-</div>
-</div>
+
 <!-- BREAKDOWN PANEL -->
 <div id="panelMask" class="panel-mask" onclick="closePanel()"></div>
 <aside id="sidePanel" class="side-panel">
-<div class="panel-top">
-<div>
-<p id="panelSub" class="panel-sub"></p>
-<h2 id="panelTitle" class="panel-title">Breakdown</h2>
-</div>
-<button class="panel-close-btn" onclick="closePanel()"><i class="fas fa-xmark"></i></button>
-</div>
-<div id="panelContent" class="panel-content">
-<div class="panel-spin"><div class="spin-ring"></div></div>
-</div>
+  <div class="panel-top">
+    <div>
+      <p id="panelSub" class="panel-sub"></p>
+      <h2 id="panelTitle" class="panel-title">Breakdown</h2>
+    </div>
+    <button class="panel-close-btn" onclick="closePanel()"><i class="fas fa-xmark"></i></button>
+  </div>
+  <div id="panelContent" class="panel-content">
+    <div class="panel-spin"><div class="spin-ring"></div></div>
+  </div>
 </aside>
+
 <!-- APP -->
 <div id="app" class="app">
-<!-- HEADER -->
-<header id="appHeader" class="app-header">
-<div class="header-brand">
-<div class="brand-mark"><i class="fas fa-chart-line"></i></div>
-<div>
-<div class="brand-name">Submit Tracker</div>
-<div class="brand-tag">Live Operations</div>
+
+  <!-- HEADER -->
+  <header id="appHeader" class="app-header">
+    <div class="header-brand">
+      <div class="brand-mark"><i class="fas fa-chart-line"></i></div>
+      <div>
+        <div class="brand-name">Submit Tracker</div>
+        <div class="brand-tag">Live Operations</div>
+      </div>
+      <div id="statusPill" class="status-pill loading">
+        <span class="status-dot"></span><span id="statusLabel">Connecting</span>
+      </div>
+    </div>
+    <div class="header-controls">
+      <div class="search-box">
+        <i class="fas fa-magnifying-glass"></i>
+        <input id="searchInput" type="text" placeholder="Search email or PC…" oninput="handleSearch()">
+      </div>
+      <select id="shiftFilter" class="ctrl-select" onchange="renderDashboard()">
+        <option value="all">All Shifts</option>
+      </select>
+      <select id="locFilter" class="ctrl-select" onchange="renderDashboard()">
+        <option value="all">All Locations</option>
+      </select>
+      <input id="datePicker" type="date" class="ctrl-date" onchange="manualRefresh()">
+      <div id="userChip" class="user-chip" style="display:none">
+        <div class="user-avatar" id="userAvatar">U</div>
+        <div class="user-meta">
+          <span id="userNameLabel" class="user-name"></span>
+          <span id="userRoleLabel" class="user-role-badge"></span>
+        </div>
+        <button class="logout-btn" onclick="handleLogout()" title="Logout">
+          <i class="fas fa-arrow-right-from-bracket"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- SHIFT SUPERVISOR VIEW (shown instead of main for shiftSupervisor role) -->
+  <div id="ssView" style="display:none"></div>
+
+  <!-- SUPERVISOR DASHBOARD VIEW (shown instead of main for supervisor role) -->
+  <div id="supervisorView" style="display:none"></div>
+
+  <!-- MAIN DASHBOARD -->
+  <main id="mainContent"></main>
+
 </div>
-<div id="statusPill" class="status-pill loading">
-<span class="status-dot"></span><span id="statusLabel">Connecting</span>
-</div>
-</div>
-<div class="header-controls">
-<div class="search-box">
-<i class="fas fa-magnifying-glass"></i>
-<input id="searchInput" type="text" placeholder="Search email or PC…" oninput="handleSearch()">
-</div>
-<select id="shiftFilter" class="ctrl-select" onchange="renderDashboard()">
-<option value="all">All Shifts</option>
-</select>
-<select id="locFilter" class="ctrl-select" onchange="renderDashboard()">
-<option value="all">All Locations</option>
-</select>
-<input id="datePicker" type="date" class="ctrl-date" onchange="manualRefresh()">
-<div id="userChip" class="user-chip" style="display:none">
-<div class="user-avatar" id="userAvatar">U</div>
-<div class="user-meta">
-<span id="userNameLabel" class="user-name"></span>
-<span id="userRoleLabel" class="user-role-badge"></span>
-</div>
-<button class="logout-btn" onclick="handleLogout()" title="Logout">
-<i class="fas fa-arrow-right-from-bracket"></i>
-</button>
-</div>
-</div>
-</header>
-<!-- SHIFT SUPERVISOR VIEW (shown instead of main for shiftSupervisor role) -->
-<div id="ssView" style="display:none"></div>
-<!-- SUPERVISOR DASHBOARD VIEW (shown instead of main for supervisor role) -->
-<div id="supervisorView" style="display:none"></div>
-<!-- ACTIVE TIME LESS THAN 6.5 SECTION (NEW) -->
-<div id="activeTime65Section" class="at65-section" style="display:none"></div>
-<!-- MAIN DASHBOARD -->
-<main id="mainContent"></main>
-</div>
+
 <!-- Toast -->
 <div id="toast" class="toast"><i class="fas fa-rotate"></i> Updated</div>
+
 <script src="config.js"></script>
 <script src="script.js"></script>
 </body>
