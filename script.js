@@ -1,8 +1,7 @@
 /* ================================================
-SCRIPT.JS  v3.4  —  Full Feature Engine (Active Time Low Added)
+SCRIPT.JS  v3.5  —  Full Feature Engine (Active Time Low Fixed)
 Depends on config.js loaded first (no defer)
 ================================================ */
-/* ── State ─────────────────────────────────────── */
 const S = {
 raw: {}, filtered: {}, openTeams: new Set(),
 search: '', lastHash: '', firstLoad: true, loading: false,
@@ -11,9 +10,8 @@ _cache: {}, _cacheTs: {}, _timer: null,
 _loginRetries: 0,
 _maxLoginRetries: 3
 };
-/* ── DOM refs (populated after DOMContentLoaded) ─ */
 const D = {};
-/* ── Client cache ───────────────────────────────── */
+
 function cGet(k) {
 const ttl = CONFIG.CLIENT_CACHE_TTL;
 const ts  = S._cacheTs[k];
@@ -26,7 +24,6 @@ Object.keys(S._cache).forEach(k=>{
 if (!prefix||k.startsWith(prefix)){ delete S._cache[k]; delete S._cacheTs[k]; }
 });
 }
-/* ── API fetch with cache ───────────────────────── */
 async function api(params, cacheKey, retryCount = 0) {
 if (cacheKey) { const h=cGet(cacheKey); if(h) return h; }
 const url  = CONFIG.API_URL+'?'+new URLSearchParams(params);
@@ -49,6 +46,7 @@ return api(params, cacheKey, retryCount + 1);
 throw e;
 }
 }
+
 /* ================================================
 LOGIN
 ================================================ */
@@ -143,6 +141,7 @@ D.supervisorView.style.display = 'none';
 D.mainContent.innerHTML    = '';
 D.mainContent.style.display= 'block';
 }
+
 /* ================================================
 INIT
 ================================================ */
@@ -190,11 +189,11 @@ if ((ev.ctrlKey||ev.metaKey)&&ev.key==='k'){ ev.preventDefault(); D.searchInput.
 if (ev.key==='Escape') { closePanel(); closeCenterModal(); closeQcModal(); }
 });
 }
-/* ── Status pill ─────────────────────────────────── */
 function setStatus(s) {
 D.statusPill.className = 'status-pill '+s;
 D.statusLabel.textContent = {live:'Live',error:'Error',loading:'Connecting'}[s]||s;
 }
+
 /* ================================================
 MAIN DASHBOARD FETCH
 ================================================ */
@@ -234,7 +233,6 @@ if (roleLower === 'shiftsupervisor') fetchShiftSupervisor(true);
 else if (roleLower === 'supervisor') fetchSupervisorDashboard(true);
 else fetchMain(true,true);
 }
-/* ── Permission filter ───────────────────────────── */
 function filterForUser(data) {
 const u = S.user;
 if (!u) return data;
@@ -256,8 +254,9 @@ return out;
 }
 return data;
 }
+
 /* ================================================
-SUPERVISOR DASHBOARD (NEW)
+SUPERVISOR DASHBOARD
 ================================================ */
 async function fetchSupervisorDashboard(full) {
 const locations = S.user?.locations || '';
@@ -293,7 +292,6 @@ console.log('renderSupervisorDashboard called with:', d);
 const date = D.datePicker.value;
 const locations = d.locations || {};
 let html = `<div class="ss-wrap">`;
-// Header
 html += `
 <div class="ss-header">
 <div>
@@ -307,7 +305,6 @@ html += `
 onchange="D.datePicker.value=this.value;cDel('supdash_');fetchSupervisorDashboard(true)">
 </div>
 </div>`;
-// Render each location as a section with KPI cards
 const locNames = Object.keys(locations);
 locNames.forEach((locName, locIdx) => {
 const loc = locations[locName];
@@ -317,7 +314,6 @@ const pendCount = loc.totalPending || 0;
 const t = loc.tasks || {};
 const u = loc.overallUserBreakdown || {LIDAR:{FP:0,QA:0},LaneLine:{FP:0,QA:0}};
 html += `<div class="loc-section" style="margin-bottom:32px;animation-delay:${locIdx * 100}ms">`;
-// Location header
 html += `
 <div class="loc-header" style="margin-bottom:20px;">
 <div class="loc-icon-wrap"><i class="fas fa-building"></i></div>
@@ -326,9 +322,7 @@ html += `
 <span class="loc-sub">${CONFIG.SHIFT_LABELS[loc.shift] || loc.shift || ''} · ${Object.keys(loc.rooms||{}).length} rooms · ${att.totalActive || 0} active</span>
 </div>
 </div>`;
-// KPI Grid for this location
 html += `<div class="kpi-grid">`;
-// Total Active Users
 html += `
 <div class="kpi-card kpi-clickable" onclick='openPanel("Attendance Overview","${esc(locName)}",${JSON.stringify(buildAttendanceRows(att))})'>
 <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-users"></i></div>
@@ -338,7 +332,6 @@ html += `
 </div>
 <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
 </div>`;
-// Total Submitted
 html += `
 <div class="kpi-card kpi-clickable" onclick='openPanel("Task Breakdown","${esc(locName)}",${JSON.stringify(buildTaskRows(t))})'>
 <div class="kpi-icon-wrap kpi-green"><i class="fas fa-circle-check"></i></div>
@@ -349,7 +342,6 @@ html += `
 </div>
 <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
 </div>`;
-// Pending
 html += `
 <div class="kpi-card kpi-clickable" onclick='openPendingPanel(${JSON.stringify(loc.rooms||{})},${pendCount},${JSON.stringify(loc.pendingByTeam||{})},${JSON.stringify(loc.pendingUsers||[])})'>
 <div class="kpi-icon-wrap kpi-red"><i class="fas fa-hourglass-half"></i></div>
@@ -359,12 +351,7 @@ html += `
 </div>
 <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
 </div>`;
-// Progress Ring
-html += `
-<div class="kpi-card kpi-ring">
-${ringHTML(pct)}
-</div>`;
-// Absent
+html += `<div class="kpi-card kpi-ring">${ringHTML(pct)}</div>`;
 if (att.totalAbsent > 0) {
 html += `
 <div class="kpi-card">
@@ -375,7 +362,6 @@ html += `
 </div>
 </div>`;
 }
-// Empty
 if (att.totalEmpty > 0) {
 html += `
 <div class="kpi-card">
@@ -386,7 +372,6 @@ html += `
 </div>
 </div>`;
 }
-// Training
 if (att.totalTraining > 0) {
 const trainingHTML = Object.entries(att.trainingByLevel||{}).map(([l,c])=>`<span class="train-badge">${l}: ${c}</span>`).join('');
 html += `
@@ -399,7 +384,6 @@ html += `
 </div>
 </div>`;
 }
-// Room Breakdown
 html += `
 <div class="kpi-card kpi-clickable" onclick='openPanel("Room Breakdown — Detailed","${esc(locName)}",${JSON.stringify(buildRoomRows(loc.rooms||{}))})'>
 <div class="kpi-icon-wrap kpi-purple"><i class="fas fa-building"></i></div>
@@ -410,7 +394,6 @@ html += `
 </div>
 <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
 </div>`;
-// LIDAR First Pass
 html += `
 <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("LIDAR First Pass","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown||{})},"LIDAR","FP")'>
 <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-cube"></i></div>
@@ -421,7 +404,6 @@ html += `
 </div>
 <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
 </div>`;
-// LIDAR QA
 html += `
 <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("LIDAR QA","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown||{})},"LIDAR","QA")'>
 <div class="kpi-icon-wrap kpi-green"><i class="fas fa-cube"></i></div>
@@ -432,7 +414,6 @@ html += `
 </div>
 <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
 </div>`;
-// Lane Line First Pass
 html += `
 <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("Lane Line First Pass","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown||{})},"LaneLine","FP")'>
 <div class="kpi-icon-wrap kpi-purple"><i class="fas fa-road"></i></div>
@@ -443,7 +424,6 @@ html += `
 </div>
 <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
 </div>`;
-// Lane Line QA
 html += `
 <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("Lane Line QA","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown||{})},"LaneLine","QA")'>
 <div class="kpi-icon-wrap kpi-yellow"><i class="fas fa-road"></i></div>
@@ -454,7 +434,6 @@ html += `
 </div>
 <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
 </div>`;
-// QC Breakdown
 html += `
 <div class="kpi-card kpi-clickable" onclick='openSupervisorQcPanel("${esc(locName)}","${fmtDate(D.datePicker.value)}")'>
 <div class="kpi-icon-wrap kpi-purple"><i class="fas fa-user-tie"></i></div>
@@ -465,7 +444,7 @@ html += `
 </div>
 <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
 </div>`;
-// Active Time < 6.5h (NEW)
+// Active Time < 6.5h Card
 html += `
 <div class="kpi-card kpi-clickable at-low-card" onclick="openActivetimeLowPanel('${esc(locName)}')">
   <div class="kpi-icon-wrap kpi-orange"><i class="fas fa-clock-rotate-left"></i></div>
@@ -476,14 +455,13 @@ html += `
   </div>
   <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
 </div>`;
-html += `</div>`; // end kpi-grid
-html += `</div>`; // end loc-section
+html += `</div>`;
+html += `</div>`;
 });
-html += `</div>`; // end ss-wrap
+html += `</div>`;
 D.supervisorView.innerHTML = html;
 console.log('✅ Supervisor dashboard rendered successfully');
-
-// Fetch counts for Active Time Low for each location
+// Fetch counts for Active Time Low
 const locNamesKeys = Object.keys(locations);
 locNamesKeys.forEach((locName, locIdx) => {
   fetchActivetimeLow(locName).then(d => {
@@ -556,7 +534,6 @@ ${trainingBadges?`<div class="room-training-badges">${trainingBadges}</div>`:''}
 </div>`;
 }).join('');
 }
-/* NEW: Show submitted users with team info */
 function openSubmittedUsersPanel(locName, submittedUsers, totalTasks, totalLabelers) {
 const userRows = submittedUsers.map((u, i) => `
 <div class="br-row" style="animation-delay:${i * 30}ms">
@@ -593,7 +570,6 @@ const html = `
 ${userRows || '<p class="br-empty">No submitted users.</p>'}`;
 openPanel('Submitted Users', locName, html);
 }
-/* NEW: Show pending users */
 function openPendingUsersPanel(locName, pendingUsers) {
 const userRows = pendingUsers.map((u, i) => `
 <div class="br-row" style="animation-delay:${i * 30}ms">
@@ -620,7 +596,6 @@ const html = `
 ${userRows || '<p class="br-empty">All users have submitted!</p>'}`;
 openPanel('Pending Users', locName, html);
 }
-/* NEW: Show active users with their status */
 function openActiveUsersPanel(locName, submittedUsers, pendingUsers) {
 const allActive = [
 ...submittedUsers.map(u => ({ ...u, status: 'submitted' })),
@@ -745,6 +720,7 @@ ${qcCards}
 document.getElementById('centerModalContent').innerHTML = `<div class="qc-empty"><i class="fas fa-triangle-exclamation"></i><p>${e.message}</p></div>`;
 }
 }
+
 /* ================================================
 SHIFT SUPERVISOR VIEW
 ================================================ */
@@ -962,7 +938,7 @@ ${trainingHTML}
 </div>
 <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
 </div>
-<!-- Active Time < 6.5h Card (NEW) -->
+<!-- Active Time < 6.5h Card -->
 <div class="kpi-card kpi-clickable at-low-card" onclick="openActivetimeLowPanel()">
   <div class="kpi-icon-wrap kpi-orange"><i class="fas fa-clock-rotate-left"></i></div>
   <div class="kpi-body">
@@ -975,8 +951,6 @@ ${trainingHTML}
 </div>
 </div>`;
 console.log('✅ Shift Supervisor view rendered successfully');
-
-// Fetch Active Time Low Count
 fetchActivetimeLow().then(d => {
   if (d.success) {
     const el = document.getElementById('atLowCountSS');
@@ -998,6 +972,7 @@ style="stroke-dasharray:${circ.toFixed(1)};stroke-dashoffset:${off.toFixed(1)}"/
 <div class="ring-center"><span class="ring-pct">${pct}%</span><span class="ring-lbl">Done</span></div>
 </div>`;
 }
+
 /* ================================================
 BREAKDOWN PANEL
 ================================================ */
@@ -1007,7 +982,6 @@ openCenterModal(title, sub, htmlContent);
 function closePanel() {
 closeCenterModal();
 }
-/* Center Modal System */
 function openCenterModal(title, sub, htmlContent) {
 let modal = document.getElementById('centerModal');
 let mask = document.getElementById('centerModalMask');
@@ -1043,9 +1017,7 @@ if (modal) modal.classList.remove('open');
 if (mask) mask.classList.remove('open');
 document.body.style.overflow = '';
 }
-/* NEW: Pending breakdown by room */
 function openPendingPanel(roomBreakdown, totalPending, pendingByTeam, pendingUsers) {
-// Room breakdown section
 const roomRows = Object.entries(roomBreakdown).map(([room, r]) => {
 if ((r.pending || 0) <= 0) return '';
 return `
@@ -1060,7 +1032,6 @@ return `
 </div>
 </div>`;
 }).join('');
-// Team breakdown section (NEW)
 let teamRows = '';
 if (pendingByTeam && Object.keys(pendingByTeam).length > 0) {
 teamRows = Object.entries(pendingByTeam).map(([team, data]) => {
@@ -1079,7 +1050,6 @@ ${userList}
 </div>`;
 }).join('');
 }
-// Individual pending users list (NEW)
 let userRows = '';
 if (pendingUsers && pendingUsers.length > 0) {
 userRows = pendingUsers.map((u, i) => `
@@ -1123,7 +1093,6 @@ ${userRows}
 ` : ''}`;
 openPanel('Pending Breakdown', 'By Team & Room', html);
 }
-/* NEW: QC Shift Modal */
 async function openQcShiftPanel(label, shift, date) {
 if (!document.getElementById('qcModal')) {
 const modalHTML = `
@@ -1246,7 +1215,6 @@ if (modal) modal.classList.remove('open');
 if (mask) mask.classList.remove('open');
 document.body.style.overflow = '';
 }
-/* NEW: User type breakdown by room */
 function openUserTypePanel(title, sub, roomUserBreakdown, modality, pass) {
 const roomRows = Object.entries(roomUserBreakdown).map(([room, r]) => {
 let count = 0;
@@ -1287,7 +1255,6 @@ const html = `
 ${roomRows || '<p class="br-empty">No labelers for this type.</p>'}`;
 openPanel(title, sub, html);
 }
-/* Supervisor location breakdown */
 async function openSupervisorPanel(locName) {
 openCenterModal('Location Breakdown', locName, '<div class="qc-modal-spin"><div class="spin-ring"></div></div>');
 const date = fmtDate(D.datePicker.value);
@@ -1343,7 +1310,6 @@ const content = document.getElementById('centerModalContent');
 if (content) content.innerHTML = `<div class="err-simple">${e.message}</div>`;
 }
 }
-/* NEW: Supervisor Room Breakdown */
 async function openRoomPanel(roomName) {
 openCenterModal('Room Task Breakdown', roomName, '<div class="qc-modal-spin"><div class="spin-ring"></div></div>');
 const date = fmtDate(D.datePicker.value);
@@ -1401,7 +1367,6 @@ const content = document.getElementById('centerModalContent');
 if (content) content.innerHTML = `<div class="err-simple">${e.message}</div>`;
 }
 }
-/* QC task breakdown */
 async function openQcPanel(qtcName) {
 openCenterModal('Task Breakdown', qtcName, '<div class="qc-modal-spin"><div class="spin-ring"></div></div>');
 const date = fmtDate(D.datePicker.value);
@@ -1443,6 +1408,7 @@ const content = document.getElementById('centerModalContent');
 if (content) content.innerHTML = `<div class="err-simple">${e.message}</div>`;
 }
 }
+
 /* ================================================
 FILTERS & SEARCH
 ================================================ */
@@ -1482,6 +1448,7 @@ function matches(email, pc) {
 if (!S.search) return true;
 return email.toLowerCase().includes(S.search)||String(pc).toLowerCase().includes(S.search);
 }
+
 /* ================================================
 RENDER DASHBOARD
 ================================================ */
@@ -1497,7 +1464,7 @@ if (!Object.keys(data).length) {
 renderEmpty(D.mainContent, isQC ? 'No data found for your team today.' : 'No data available.'); return;
 }
 
-// Active Time Low Section for QC (NEW)
+// Active Time Low Section for QC
 if (isQC) {
   const qcSection = document.createElement('div');
   qcSection.className = 'loc-section at-low-section';
@@ -1682,6 +1649,7 @@ return `<div class="user-card uc-${type}" style="animation-delay:${idx*30}ms">
 <div class="uc-pc"><i class="fas fa-desktop"></i>${esc(u.pc)}</div>
 </div>`;
 }
+
 /* ================================================
 STATE RENDERERS
 ================================================ */
@@ -1702,12 +1670,14 @@ function showToast() {
 D.toast.classList.add('show');
 setTimeout(()=>D.toast.classList.remove('show'),2000);
 }
+
 /* ================================================
 UTILITIES
 ================================================ */
 function fmtDate(s){ return s.split('-').reverse().join('-'); }
 function makeHash(d){ let h=''; Object.values(d).forEach(l=>Object.values(l).forEach(t=>Object.values(t).forEach(tm=>h+=tm.submitted.length+'-'+tm.notSubmitted.length))); return h; }
 function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
 /* ================================================
 BOOT
 ================================================ */
@@ -1747,7 +1717,7 @@ console.log('Users loaded:', S.users.length);
 });
 
 /* ================================================
-ACTIVE TIME LOW HOURS (NEW FEATURE)
+ACTIVE TIME LOW HOURS (FIXED v3.5)
 ================================================ */
 async function fetchActivetimeLow(locFilter) {
   const date = fmtDate(D.datePicker.value);
@@ -1761,7 +1731,6 @@ async function fetchActivetimeLow(locFilter) {
     role, shift, locations, qtcName, date
   }, cacheKey);
   
-  // Filter by specific location if supervisor view needs per-location count
   if (d.success && locFilter) {
      const locLow = locFilter.toLowerCase();
      const filtered = d.employees.filter(e => {
