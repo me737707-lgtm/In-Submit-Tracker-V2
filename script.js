@@ -1,5 +1,7 @@
 /* ================================================
-SCRIPT.JS  v3.6  —  Full Feature Engine (+ Lane Line Certification)
+SCRIPT.JS  v3.7  —  Full Feature Engine
++ Lane Line: per-user details (QC/Floor) + room breakdown (Shift Sup)
++ registered-in-scope totals + "registered not working today"
 Depends on config.js loaded first (no defer)
 ================================================ */
 const S = {
@@ -439,7 +441,6 @@ function renderSupervisorDashboard(d) {
         </div>
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>`;
-    // Active Time < 6.5h Card
     html += `
       <div class="kpi-card kpi-clickable at-low-card" onclick="openActivetimeLowPanel('${esc(locName)}')">
         <div class="kpi-icon-wrap kpi-orange"><i class="fas fa-clock-rotate-left"></i></div>
@@ -450,7 +451,6 @@ function renderSupervisorDashboard(d) {
         </div>
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>`;
-    // Lane Line Certification Card (NEW)
     html += `
       <div class="kpi-card kpi-clickable lane-cert-card" onclick="openLaneLineCertPanel('${esc(locName)}')">
         <div class="kpi-icon-wrap kpi-cyan"><i class="fas fa-certificate"></i></div>
@@ -467,7 +467,6 @@ function renderSupervisorDashboard(d) {
   html += `</div>`;
   D.supervisorView.innerHTML = html;
   console.log('✅ Supervisor dashboard rendered successfully');
-  // Fetch counts for Active Time Low + Lane Line Cert
   const locNamesKeys = Object.keys(locations);
   locNamesKeys.forEach((locName, locIdx) => {
     fetchActivetimeLow(locName).then(d => {
@@ -483,8 +482,8 @@ function renderSupervisorDashboard(d) {
         el.textContent = d.issuesCount;
         el.className   = 'kpi-val ' + (d.issuesCount > 0 ? 'kpi-val-red' : 'kpi-val-green');
         if (sub) sub.textContent = d.issuesCount > 0
-          ? ('of ' + d.totalLaneLineUsers + ' labelers')
-          : ('all ' + d.totalLaneLineUsers + ' OK');
+          ? ('of ' + d.totalLaneLineUsers + ' · ' + d.registeredInScope + ' reg.')
+          : (d.registeredInScope + ' registered · all OK');
       }
     });
   });
@@ -954,7 +953,6 @@ function renderSSView(d) {
           </div>
           <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
         </div>
-        <!-- Active Time < 6.5h Card -->
         <div class="kpi-card kpi-clickable at-low-card" onclick="openActivetimeLowPanel()">
           <div class="kpi-icon-wrap kpi-orange"><i class="fas fa-clock-rotate-left"></i></div>
           <div class="kpi-body">
@@ -964,7 +962,6 @@ function renderSSView(d) {
           </div>
           <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
         </div>
-        <!-- Lane Line Certification Card (NEW) -->
         <div class="kpi-card kpi-clickable lane-cert-card" onclick="openLaneLineCertPanel()">
           <div class="kpi-icon-wrap kpi-cyan"><i class="fas fa-certificate"></i></div>
           <div class="kpi-body">
@@ -990,8 +987,8 @@ function renderSSView(d) {
       el.textContent = d.issuesCount;
       el.className   = 'kpi-val ' + (d.issuesCount > 0 ? 'kpi-val-red' : 'kpi-val-green');
       if (sub) sub.textContent = d.issuesCount > 0
-        ? ('of ' + d.totalLaneLineUsers + ' labelers')
-        : ('all ' + d.totalLaneLineUsers + ' OK');
+        ? ('of ' + d.totalLaneLineUsers + ' · ' + d.registeredInScope + ' reg.')
+        : (d.registeredInScope + ' registered · all OK');
     }
   });
 }
@@ -1497,7 +1494,6 @@ function renderDashboard() {
   if (!Object.keys(data).length) {
     renderEmpty(D.mainContent, isQC ? 'No data found for your team today.' : 'No data available.'); return;
   }
-  // QC dual section: Active Time < 6.5h  +  Lane Line Certification (side by side)
   if (isQC) {
     const dual = document.createElement('div');
     dual.className = 'dual-section-grid';
@@ -1552,10 +1548,10 @@ function renderDashboard() {
       if (d.success) {
         if (d.issuesCount > 0) {
           el.innerHTML = '<span style="color:var(--red);font-weight:700;">' + d.issuesCount +
-            '</span> not certified · ' + d.certifiedOk + ' OK';
+            '</span> issues · ' + d.registeredInScope + ' registered';
         } else {
           el.innerHTML = '<span style="color:var(--green);font-weight:700;">All certified ✓</span> · ' +
-            d.totalLaneLineUsers + ' labelers';
+            d.registeredInScope + ' registered';
         }
       } else {
         el.textContent = 'Unavailable';
@@ -1783,7 +1779,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   console.log('Users loaded:', S.users.length);
 });
 /* ================================================
-ACTIVE TIME LOW HOURS (FIXED v3.5)
+ACTIVE TIME LOW HOURS
 ================================================ */
 async function fetchActivetimeLow(locFilter) {
   const date = fmtDate(D.datePicker.value);
@@ -1860,7 +1856,7 @@ async function openActivetimeLowPanel(locFilter) {
   }
 }
 /* ================================================
-LANE LINE CERTIFICATION (NEW v3.6)
+LANE LINE CERTIFICATION (v3.7 — details + registered)
 ================================================ */
 async function fetchLaneLineCert(locFilter) {
   const date = fmtDate(D.datePicker.value);
@@ -1876,15 +1872,20 @@ async function fetchLaneLineCert(locFilter) {
   }, cacheKey);
   if (!d.success) return d;
   let users = d.users || [];
+  let registered = d.registered || [];
   if (locFilter) {
     const locLow = locFilter.toLowerCase();
-    users = users.filter(e => {
-      const eLoc = (e.location||'').toLowerCase();
-      return eLoc === locLow || eLoc.includes(locLow) || locLow.includes(eLoc) ||
-        (locLow === 'saint fatima' && (eLoc.startsWith('sf ') || eLoc.includes('saint fatima')));
-    });
+    const locOk = (x) => {
+      const e = (x||'').toLowerCase();
+      return e === locLow || e.includes(locLow) || locLow.includes(e) ||
+        (locLow === 'saint fatima' && (e.startsWith('sf ') || e.includes('saint fatima')));
+    };
+    users = users.filter(e => locOk(e.location));
+    registered = registered.filter(r => locOk(r.location));
   }
   const issues = users.filter(u => u.issueType);
+  const regFP = registered.filter(r => r.level === 'FP').length;
+  const regQA = registered.filter(r => r.level === 'QA').length;
   return {
     success: true,
     users: users,
@@ -1892,99 +1893,171 @@ async function fetchLaneLineCert(locFilter) {
     totalLaneLineUsers: users.length,
     totalLaneLineTasks: d.totalLaneLineTasks || 0,
     issuesCount: issues.length,
-    certifiedOk: users.length - issues.length
+    certifiedOk: users.length - issues.length,
+    registered: registered,
+    registeredInScope: registered.length,
+    registeredFP: regFP,
+    registeredQA: regQA
   };
 }
+/* ── per-user row (QC / Floor Supervisor detail list) ── */
+function certUserRow(e, i) {
+  const isQaIssue = e.issueType === 'NOT_CERTIFIED_QA';
+  const isNotCert = e.issueType === 'NOT_CERTIFIED';
+  const statusBadge = isNotCert
+    ? '<span class="br-pill pill-red"><i class="fas fa-ban"></i> Not Certified</span>'
+    : isQaIssue
+      ? '<span class="br-pill pill-yellow"><i class="fas fa-triangle-exclamation"></i> Not Cert. for QA</span>'
+      : '<span class="br-pill pill-green"><i class="fas fa-circle-check"></i> OK</span>';
+  const certBadge = e.certifiedLevel === 'QA'
+    ? '<span class="br-pill pill-green"><i class="fas fa-certificate"></i> Cert: QA</span>'
+    : e.certifiedLevel === 'FP'
+      ? '<span class="br-pill pill-blue"><i class="fas fa-certificate"></i> Cert: FP</span>'
+      : '<span class="br-pill pill-gray"><i class="fas fa-circle-xmark"></i> Not in List</span>';
+  const workBadges = (e.workingPasses||[]).map(p => p === 'QA'
+    ? '<span class="br-pill pill-yellow"><i class="fas fa-gavel"></i> QA</span>'
+    : '<span class="br-pill pill-blue"><i class="fas fa-road"></i> FP</span>').join('');
+  return `
+    <div class="br-row lane-user-row" style="animation-delay:${i * 15}ms">
+      <div class="lane-user-id">
+        <div class="lane-avatar">${(e.email||'?')[0].toUpperCase()}</div>
+        <div class="lane-user-meta">
+          <div class="lane-user-email">${esc(e.email)}</div>
+          <div class="lane-user-sub">
+            <span><i class="fas fa-desktop"></i>${esc(e.pc||'N/A')}</span>
+            <span><i class="fas fa-map-marker-alt"></i>${esc(e.location||'N/A')}</span>
+            <span><i class="fas fa-user-tie"></i>${esc(e.team||'N/A')}</span>
+          </div>
+        </div>
+      </div>
+      <div class="lane-user-badges">
+        <div class="lane-badge-line">${statusBadge}</div>
+        <div class="lane-badge-line">${certBadge}${workBadges}</div>
+      </div>
+    </div>`;
+}
+/* ── room aggregation (Shift Supervisor view) ── */
+function buildRoomCertRows(users, registered) {
+  const map = {};
+  const ensure = (r) => {
+    if (!map[r]) map[r] = { room:r, fp:0, qa:0, violations:0, workingSet:new Set(), regFP:0, regQA:0 };
+    return map[r];
+  };
+  users.forEach(u => {
+    const r = u.location || 'Unknown';
+    const m = ensure(r);
+    m.workingSet.add(u.email);
+    (u.workingPasses||[]).forEach(p => { if (p === 'FP') m.fp++; else if (p === 'QA') m.qa++; });
+    if (u.issueType) m.violations++;
+  });
+  registered.forEach(r => {
+    const m = ensure(r.location || 'Unknown');
+    if (r.level === 'FP') m.regFP++; else if (r.level === 'QA') m.regQA++;
+  });
+  const rooms = Object.values(map).sort((a,b) => (b.regFP+b.regQA) - (a.regFP+a.regQA));
+  if (!rooms.length) return '';
+  return rooms.map((m, i) => {
+    const working = m.workingSet.size;
+    const reg = m.regFP + m.regQA;
+    return `
+      <div class="br-row room-detail-row" style="animation-delay:${i * 20}ms">
+        <div class="room-detail-main">
+          <span class="br-label"><i class="fas fa-door-open"></i>${esc(m.room)}</span>
+          <span class="br-pill pill-cyan"><i class="fas fa-certificate"></i>${reg} registered</span>
+        </div>
+        <div class="room-detail-stats">
+          <span class="br-pill pill-blue"><i class="fas fa-users"></i>${working} working</span>
+          <span class="br-pill pill-blue"><i class="fas fa-road"></i>${m.fp} FP</span>
+          <span class="br-pill pill-yellow"><i class="fas fa-gavel"></i>${m.qa} QA</span>
+          ${m.violations > 0
+            ? `<span class="br-pill pill-red"><i class="fas fa-triangle-exclamation"></i>${m.violations} issue${m.violations>1?'s':''}</span>`
+            : `<span class="br-pill pill-green"><i class="fas fa-circle-check"></i>all OK</span>`}
+        </div>
+      </div>`;
+  }).join('');
+}
 async function openLaneLineCertPanel(locFilter) {
-  const sub = locFilter ? locFilter : 'Lane Line labelers certification check';
+  const sub = locFilter ? locFilter : 'Lane Line certification overview';
   openCenterModal('Lane Line Certification', sub,
     '<div class="qc-modal-spin"><div class="spin-ring"></div></div>');
   try {
     const d = await fetchLaneLineCert(locFilter);
     if (!d.success) throw new Error(d.error || 'Failed');
-    const users  = d.users || [];
-    const issues = d.issues || [];
-    const ok     = users.length - issues.length;
-    if (users.length === 0) {
-      document.getElementById('centerModalContent').innerHTML = `
+    const users      = d.users || [];
+    const registered = d.registered || [];
+    const regIn      = d.registeredInScope || 0;
+    const regFP      = d.registeredFP || 0;
+    const regQA      = d.registeredQA || 0;
+    const ok         = users.length - (d.issuesCount || 0);
+    const workingEmails = new Set(users.map(u => u.email));
+    const regNotWorking = registered.filter(r => !workingEmails.has(r.email));
+    const role = (S.user?.role || '').toLowerCase();
+    const isShiftSup = role.includes('shift');
+    const content = document.getElementById('centerModalContent');
+
+    if (regIn === 0 && users.length === 0) {
+      content.innerHTML = `
         <div class="qc-empty">
           <i class="fas fa-road"></i>
-          <p>No Lane Line tasks found for this view today.</p>
+          <p>No Lane Line labelers registered or working in this scope today.</p>
         </div>`;
       return;
     }
-    if (issues.length === 0) {
-      document.getElementById('centerModalContent').innerHTML = `
-        <div class="br-summary-card">
-          <div class="br-summary-row">
-            <span class="brs-label">Lane Line Labelers Checked</span>
-            <span class="brs-val">${users.length}</span>
-          </div>
-          <div class="br-summary-row">
-            <span class="brs-label">Certified</span>
-            <span class="brs-val c-green">${ok}</span>
-          </div>
-        </div>
-        <div class="qc-empty" style="padding:40px 20px">
-          <i class="fas fa-circle-check" style="color:var(--green);opacity:.6"></i>
-          <p>All Lane Line labelers are properly certified ✓</p>
-        </div>`;
-      return;
-    }
-    const rows = issues.map((e, i) => {
-      const isQaIssue = e.issueType === 'NOT_CERTIFIED_QA';
-      const issueBadge = isQaIssue
-        ? '<span class="br-pill pill-yellow"><i class="fas fa-triangle-exclamation"></i> Not Certified for QA</span>'
-        : '<span class="br-pill pill-red"><i class="fas fa-ban"></i> Not Certified</span>';
-      const certBadge = e.certifiedLevel === 'QA'
-        ? '<span class="br-pill pill-green"><i class="fas fa-certificate"></i> Cert: QA</span>'
-        : e.certifiedLevel === 'FP'
-          ? '<span class="br-pill pill-blue"><i class="fas fa-certificate"></i> Cert: FP</span>'
-          : '<span class="br-pill pill-gray"><i class="fas fa-circle-xmark"></i> Not in List</span>';
-      const workBadges = (e.workingPasses||[]).map(p => p === 'QA'
-        ? '<span class="br-pill pill-yellow"><i class="fas fa-gavel"></i> Working: QA</span>'
-        : '<span class="br-pill pill-blue"><i class="fas fa-road"></i> Working: FP</span>').join('');
-      return `
-        <div class="br-row" style="animation-delay:${i * 20}ms">
-          <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
-            <div style="width:32px;height:32px;border-radius:8px;background:${isQaIssue?'linear-gradient(135deg,var(--yellow),var(--orange))':'linear-gradient(135deg,var(--red),var(--purple))'};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;">
-              ${(e.email||'?')[0].toUpperCase()}
-            </div>
-            <div style="flex:1;min-width:0;">
-              <div style="font-size:13px;font-weight:600;color:var(--t-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(e.email)}</div>
-              <div style="font-size:11px;color:var(--t-4);display:flex;align-items:center;gap:6px;margin-top:2px;flex-wrap:wrap;">
-                <span><i class="fas fa-desktop" style="font-size:10px;"></i> ${esc(e.pc||'N/A')}</span>
-                <span style="color:var(--br-2)">|</span>
-                <span><i class="fas fa-map-marker-alt" style="font-size:10px;"></i> ${esc(e.location||'N/A')}</span>
-                <span style="color:var(--br-2)">|</span>
-                <span><i class="fas fa-user-tie" style="font-size:10px;"></i> ${esc(e.team||'N/A')}</span>
-              </div>
-            </div>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-wrap:wrap;">
-            ${issueBadge}
-            <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;">${certBadge}${workBadges}</div>
-          </div>
-        </div>`;
-    }).join('');
-    const html = `
-      <div class="br-summary-card">
+
+    let html = `
+      <div class="br-summary-card lane-cert-summary">
         <div class="br-summary-row">
-          <span class="brs-label">Lane Line Labelers Checked</span>
+          <span class="brs-label"><i class="fas fa-certificate"></i>Registered in Lane Line Teams</span>
+          <span class="brs-val">${regIn}</span>
+        </div>
+        <div class="br-summary-row">
+          <span class="brs-label"><span class="reg-dot reg-dot-fp"></span>Certified FP</span>
+          <span class="brs-val brs-val-sm c-blue">${regFP}</span>
+        </div>
+        <div class="br-summary-row">
+          <span class="brs-label"><span class="reg-dot reg-dot-qa"></span>Certified QA</span>
+          <span class="brs-val brs-val-sm c-green">${regQA}</span>
+        </div>
+        <div class="br-summary-row">
+          <span class="brs-label"><i class="fas fa-road"></i>Working on Lane Line today</span>
           <span class="brs-val">${users.length}</span>
         </div>
         <div class="br-summary-row">
-          <span class="brs-label">Certified OK</span>
+          <span class="brs-label"><i class="fas fa-circle-check"></i>Certified OK</span>
           <span class="brs-val c-green">${ok}</span>
         </div>
         <div class="br-summary-row">
-          <span class="brs-label">Not Certified / Violations</span>
-          <span class="brs-val c-red">${issues.length}</span>
+          <span class="brs-label"><i class="fas fa-triangle-exclamation"></i>Not Certified / Violations</span>
+          <span class="brs-val c-red">${d.issuesCount || 0}</span>
         </div>
-      </div>
-      <div class="br-section" style="margin-top:20px">Certification Issues (${issues.length})</div>
-      ${rows}`;
-    document.getElementById('centerModalContent').innerHTML = html;
+        ${regNotWorking.length ? `
+          <div class="br-summary-row">
+            <span class="brs-label"><i class="fas fa-user-clock"></i>Registered · not on Lane Line today</span>
+            <span class="brs-val brs-val-sm" style="color:var(--t-3)">${regNotWorking.length}</span>
+          </div>` : ''}
+      </div>`;
+
+    if (isShiftSup) {
+      /* Shift Supervisor → room breakdown (counts only) */
+      html += `<div class="br-section" style="margin-top:20px">Lane Line by Room</div>`;
+      html += buildRoomCertRows(users, registered) ||
+        '<p class="br-empty">No Lane Line activity in this shift.</p>';
+    } else {
+      /* QC / Floor Supervisor → full per-user detail list */
+      html += `<div class="br-section" style="margin-top:20px">Lane Line Labelers — Working Today (${users.length})</div>`;
+      if (users.length) {
+        html += users.map((u, i) => certUserRow(u, i)).join('');
+      } else {
+        html += '<p class="br-empty">No one working Lane Line in your scope today.</p>';
+      }
+      if (regNotWorking.length) {
+        html += `<div class="br-section" style="margin-top:20px">Registered but not on Lane Line today (${regNotWorking.length})</div>`;
+        html += `<div class="reg-chips">` +
+          regNotWorking.map(r => `<span class="reg-chip" title="${esc(r.level)}">${esc(r.email)}</span>`).join('') +
+          `</div>`;
+      }
+    }
+    content.innerHTML = html;
   } catch(e) {
     document.getElementById('centerModalContent').innerHTML = `<div class="qc-empty"><i class="fas fa-triangle-exclamation"></i><p>${e.message}</p></div>`;
   }
