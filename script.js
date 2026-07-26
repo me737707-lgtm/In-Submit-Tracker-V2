@@ -1,7 +1,6 @@
 /* ================================================
-SCRIPT.JS  v3.7  —  Full Feature Engine
-+ Lane Line: per-user details (QC/Floor) + room breakdown (Shift Sup)
-+ registered-in-scope totals + "registered not working today"
+SCRIPT.JS  v3.7.1  —  Full Feature Engine
++ "Registered but not working" now shows full detail rows
 Depends on config.js loaded first (no defer)
 ================================================ */
 const S = {
@@ -1856,7 +1855,7 @@ async function openActivetimeLowPanel(locFilter) {
   }
 }
 /* ================================================
-LANE LINE CERTIFICATION (v3.7 — details + registered)
+LANE LINE CERTIFICATION (v3.7.1 — idle users get detail rows)
 ================================================ */
 async function fetchLaneLineCert(locFilter) {
   const date = fmtDate(D.datePicker.value);
@@ -1900,7 +1899,7 @@ async function fetchLaneLineCert(locFilter) {
     registeredQA: regQA
   };
 }
-/* ── per-user row (QC / Floor Supervisor detail list) ── */
+/* ── per-user row (QC / Floor Supervisor working list) ── */
 function certUserRow(e, i) {
   const isQaIssue = e.issueType === 'NOT_CERTIFIED_QA';
   const isNotCert = e.issueType === 'NOT_CERTIFIED';
@@ -1933,6 +1932,35 @@ function certUserRow(e, i) {
       <div class="lane-user-badges">
         <div class="lane-badge-line">${statusBadge}</div>
         <div class="lane-badge-line">${certBadge}${workBadges}</div>
+      </div>
+    </div>`;
+}
+/* ── per-user row for REGISTERED-BUT-IDLE users (NEW v3.7.1) ──
+   Same layout as the working rows, but with a grey avatar and an
+   "idle" status badge so they read clearly as "registered, not on
+   Lane Line today". PC / location / team come from the Users sheet. */
+function regNotWorkingRow(r, i) {
+  const certBadge = r.level === 'QA'
+    ? '<span class="br-pill pill-green"><i class="fas fa-certificate"></i> Cert: QA</span>'
+    : r.level === 'FP'
+      ? '<span class="br-pill pill-blue"><i class="fas fa-certificate"></i> Cert: FP</span>'
+      : '<span class="br-pill pill-gray"><i class="fas fa-circle-xmark"></i> Not in List</span>';
+  return `
+    <div class="br-row lane-user-row" style="animation-delay:${i * 15}ms">
+      <div class="lane-user-id">
+        <div class="lane-avatar" style="background:linear-gradient(135deg,var(--gray),var(--t-4));color:#0d1117;box-shadow:none;">${(r.email||'?')[0].toUpperCase()}</div>
+        <div class="lane-user-meta">
+          <div class="lane-user-email">${esc(r.email)}</div>
+          <div class="lane-user-sub">
+            <span><i class="fas fa-desktop"></i>${esc(r.pc||'N/A')}</span>
+            <span><i class="fas fa-map-marker-alt"></i>${esc(r.location||'N/A')}</span>
+            <span><i class="fas fa-user-tie"></i>${esc(r.team||'N/A')}</span>
+          </div>
+        </div>
+      </div>
+      <div class="lane-user-badges">
+        <div class="lane-badge-line"><span class="br-pill pill-gray"><i class="fas fa-user-clock"></i> Not on Lane Line</span></div>
+        <div class="lane-badge-line">${certBadge}</div>
       </div>
     </div>`;
 }
@@ -2050,11 +2078,10 @@ async function openLaneLineCertPanel(locFilter) {
       } else {
         html += '<p class="br-empty">No one working Lane Line in your scope today.</p>';
       }
+      /* Registered-but-idle → NOW full detail rows (was simple chips) */
       if (regNotWorking.length) {
         html += `<div class="br-section" style="margin-top:20px">Registered but not on Lane Line today (${regNotWorking.length})</div>`;
-        html += `<div class="reg-chips">` +
-          regNotWorking.map(r => `<span class="reg-chip" title="${esc(r.level)}">${esc(r.email)}</span>`).join('') +
-          `</div>`;
+        html += regNotWorking.map((r, i) => regNotWorkingRow(r, i)).join('');
       }
     }
     content.innerHTML = html;
