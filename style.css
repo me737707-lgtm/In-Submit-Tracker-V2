@@ -1,7 +1,7 @@
 /* ================================================
-STYLE.CSS  v3.3  —  Google + Apple Design System
+STYLE.CSS  v3.4  —  Google + Apple Design System
 Dark mode · Material You colours · SF Pro spacing
-(+ Lane Line Certification / dual-section grid)
+(+ Lane Line dual-section, per-user detail rows, reg chips)
 ================================================ */
 /* ── Tokens ──────────────────────────────────────── */
 :root {
@@ -205,8 +205,9 @@ SIDE PANEL
 .pill-red   { background:var(--red-bg);    color:var(--red);    border:1px solid var(--red-br); }
 .pill-yellow{ background:var(--yellow-bg); color:var(--yellow); border:1px solid var(--yellow-br); }
 .pill-gray  { background:var(--gray-bg);   color:var(--gray);   border:1px solid var(--gray-br); }
+.pill-cyan  { background:var(--cyan-bg);   color:var(--cyan);   border:1px solid var(--cyan-br); }
 .br-empty{ color:var(--t-4); font-size:13px; padding:20px 0; text-align:center; }
-/* Room detail rows (NEW) */
+/* Room detail rows */
 .room-detail-row{
   flex-direction:column;
   align-items:stretch;
@@ -246,7 +247,7 @@ SIDE PANEL
   padding:8px 12px;
   margin-bottom:8px;
 }
-/* Task mini grid (NEW) */
+/* Task mini grid */
 .br-task-mini{
   display:grid;
   grid-template-columns:1fr 1fr;
@@ -278,9 +279,15 @@ SIDE PANEL
   padding:8px 0; border-bottom:1px solid var(--br-1);
 }
 .br-summary-row:last-child{ border-bottom:none; }
-.brs-label{ font-size:13px; color:var(--t-3); font-weight:500; }
+.brs-label{ font-size:13px; color:var(--t-3); font-weight:500; display:flex; align-items:center; }
+.brs-label i{ width:16px; color:var(--cyan); margin-right:6px; font-size:12px; }
 .brs-val  { font-size:20px; font-weight:800; color:var(--t-1); }
-.c-green{ color:var(--green); } .c-red{ color:var(--red); }
+.brs-val-sm{ font-size:15px; }
+.c-green{ color:var(--green); } .c-red{ color:var(--red); } .c-blue{ color:var(--blue); }
+/* registered dots */
+.reg-dot{ width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:8px; }
+.reg-dot-fp{ background:var(--blue); box-shadow:0 0 6px var(--blue-br); }
+.reg-dot-qa{ background:var(--green); box-shadow:0 0 6px var(--green-br); }
 /* Task card grid */
 .br-task-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .br-task-card{
@@ -343,7 +350,7 @@ APP SHELL
 }
 .search-box input::placeholder{ color:var(--t-4); }
 .search-box input:focus{ border-color:var(--blue); box-shadow:0 0 0 3px rgba(96,165,250,.15); }
-/* FIXED: Dropdown styling for dark mode */
+/* Dropdown styling for dark mode */
 .ctrl-select,.ctrl-date{
   background:var(--sf-1);
   border:1px solid var(--br-1);
@@ -529,7 +536,7 @@ MAIN DASHBOARD
 .at-low-section .loc-icon-wrap i {
   color: var(--orange);
 }
-/* Lane Line Certification Section Styling (NEW) */
+/* Lane Line Certification Section Styling */
 .lane-cert-section .loc-icon-wrap {
   background: linear-gradient(135deg, var(--cyan-bg), var(--blue-bg));
   border-color: var(--cyan-br);
@@ -537,7 +544,7 @@ MAIN DASHBOARD
 .lane-cert-section .loc-icon-wrap i {
   color: var(--cyan);
 }
-/* Dual section grid — QC view: Active Time + Lane Cert side by side (NEW) */
+/* Dual section grid — QC view: Active Time + Lane Cert side by side */
 .dual-section-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -844,7 +851,7 @@ QC MODAL (Center Popup)
   .qc-summary-bar{ grid-template-columns:repeat(2,1fr); }
 }
 /* ================================================
-PENDING TEAM BREAKDOWN (NEW)
+PENDING TEAM BREAKDOWN
 ================================================ */
 .team-pending-row{
   flex-direction:column;
@@ -875,7 +882,7 @@ PENDING TEAM BREAKDOWN (NEW)
   white-space:nowrap;
 }
 /* ================================================
-ACTIVE TIME LOW HOURS CARD (NEW FEATURE)
+ACTIVE TIME LOW HOURS CARD
 ================================================ */
 .at-low-card {
   border: 1px solid var(--orange-br) !important;
@@ -885,7 +892,7 @@ ACTIVE TIME LOW HOURS CARD (NEW FEATURE)
   box-shadow: 0 8px 24px rgba(251, 146, 60, .15), var(--sh-md) !important;
 }
 /* ================================================
-LANE LINE CERTIFICATION CARD (NEW FEATURE)
+LANE LINE CERTIFICATION CARD
 ================================================ */
 .lane-cert-card {
   border: 1px solid var(--cyan-br) !important;
@@ -894,3 +901,57 @@ LANE LINE CERTIFICATION CARD (NEW FEATURE)
   border-color: var(--cyan) !important;
   box-shadow: 0 8px 24px rgba(34, 211, 238, .15), var(--sh-md) !important;
 }
+/* ================================================
+LANE LINE CERT — per-user detail rows (NEW v3.7)
+================================================ */
+.lane-user-row {
+  align-items: flex-start;
+  gap: 12px;
+  transition: background .2s var(--ease), border-color .2s var(--ease);
+}
+.lane-user-row:hover {
+  background: var(--sf-2);
+  border-color: var(--cyan-br);
+}
+.lane-user-id {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.lane-avatar {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--cyan), var(--blue));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; color: #04121a;
+  box-shadow: 0 2px 8px rgba(34,211,238,.25);
+}
+.lane-user-meta { min-width: 0; flex: 1; }
+.lane-user-email {
+  font-size: 13px; font-weight: 700; color: var(--t-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lane-user-sub {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  font-size: 11px; color: var(--t-4); margin-top: 4px;
+}
+.lane-user-sub i { font-size: 10px; margin-right: 3px; color: var(--t-4); }
+.lane-user-badges {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0;
+}
+.lane-badge-line { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+/* registered-not-working chips */
+.reg-chips { display: flex; flex-wrap: wrap; gap: 7px; padding: 4px 0; }
+.reg-chip {
+  font-size: 11px; font-weight: 600;
+  padding: 5px 11px; border-radius: 99px;
+  background: var(--cyan-bg); color: var(--cyan);
+  border: 1px solid var(--cyan-br);
+  transition: transform .15s var(--spring), background .2s;
+}
+.reg-chip:hover { transform: translateY(-2px); background: rgba(34,211,238,.2); }
+/* summary card breathing room for the cert panel */
+.lane-cert-summary .br-summary-row { padding: 9px 0; }
