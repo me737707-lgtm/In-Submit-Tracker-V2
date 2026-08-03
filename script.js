@@ -1,6 +1,8 @@
 /* ================================================
-SCRIPT.JS  v3.7.1  —  Full Feature Engine
-+ "Registered but not working" now shows full detail rows
+SCRIPT.JS  v3.8.0  —  Full Feature Engine
+NEW: Shift Supervisor now sees the Not Certified labelers
+     (same detail rows as QC / Floor Supervisor) inside the
+     Lane Line Certification panel, on top of the room breakdown.
 Depends on config.js loaded first (no defer)
 ================================================ */
 const S = {
@@ -1855,7 +1857,7 @@ async function openActivetimeLowPanel(locFilter) {
   }
 }
 /* ================================================
-LANE LINE CERTIFICATION (v3.7.1 — idle users get detail rows)
+LANE LINE CERTIFICATION (v3.8.0 — Shift Sup sees Not Certified rows)
 ================================================ */
 async function fetchLaneLineCert(locFilter) {
   const date = fmtDate(D.datePicker.value);
@@ -1899,7 +1901,7 @@ async function fetchLaneLineCert(locFilter) {
     registeredQA: regQA
   };
 }
-/* ── per-user row (QC / Floor Supervisor working list) ── */
+/* ── per-user row (working labelers / violations) ── */
 function certUserRow(e, i) {
   const isQaIssue = e.issueType === 'NOT_CERTIFIED_QA';
   const isNotCert = e.issueType === 'NOT_CERTIFIED';
@@ -1935,10 +1937,7 @@ function certUserRow(e, i) {
       </div>
     </div>`;
 }
-/* ── per-user row for REGISTERED-BUT-IDLE users (NEW v3.7.1) ──
-   Same layout as the working rows, but with a grey avatar and an
-   "idle" status badge so they read clearly as "registered, not on
-   Lane Line today". PC / location / team come from the Users sheet. */
+/* ── per-user row for REGISTERED-BUT-IDLE users ── */
 function regNotWorkingRow(r, i) {
   const certBadge = r.level === 'QA'
     ? '<span class="br-pill pill-green"><i class="fas fa-certificate"></i> Cert: QA</span>'
@@ -2016,7 +2015,8 @@ async function openLaneLineCertPanel(locFilter) {
     const regIn      = d.registeredInScope || 0;
     const regFP      = d.registeredFP || 0;
     const regQA      = d.registeredQA || 0;
-    const ok         = users.length - (d.issuesCount || 0);
+    const issues     = (d.issues && d.issues.length) ? d.issues : users.filter(u => u.issueType);
+    const ok         = users.length - issues.length;
     const workingEmails = new Set(users.map(u => u.email));
     const regNotWorking = registered.filter(r => !workingEmails.has(r.email));
     const role = (S.user?.role || '').toLowerCase();
@@ -2056,7 +2056,7 @@ async function openLaneLineCertPanel(locFilter) {
         </div>
         <div class="br-summary-row">
           <span class="brs-label"><i class="fas fa-triangle-exclamation"></i>Not Certified / Violations</span>
-          <span class="brs-val c-red">${d.issuesCount || 0}</span>
+          <span class="brs-val c-red">${issues.length}</span>
         </div>
         ${regNotWorking.length ? `
           <div class="br-summary-row">
@@ -2066,10 +2066,17 @@ async function openLaneLineCertPanel(locFilter) {
       </div>`;
 
     if (isShiftSup) {
-      /* Shift Supervisor → room breakdown (counts only) */
+      /* Shift Supervisor → room breakdown (counts)… */
       html += `<div class="br-section" style="margin-top:20px">Lane Line by Room</div>`;
       html += buildRoomCertRows(users, registered) ||
         '<p class="br-empty">No Lane Line activity in this shift.</p>';
+      /* …+ NEW (v3.8.0): the actual Not Certified labelers, same rows as QC/Floor */
+      html += `<div class="br-section" style="margin-top:20px">Not Certified Labelers (${issues.length})</div>`;
+      if (issues.length) {
+        html += issues.map((u, i) => certUserRow(u, i)).join('');
+      } else {
+        html += '<p class="br-empty">All Lane Line labelers in this shift are certified ✓</p>';
+      }
     } else {
       /* QC / Floor Supervisor → full per-user detail list */
       html += `<div class="br-section" style="margin-top:20px">Lane Line Labelers — Working Today (${users.length})</div>`;
@@ -2078,7 +2085,6 @@ async function openLaneLineCertPanel(locFilter) {
       } else {
         html += '<p class="br-empty">No one working Lane Line in your scope today.</p>';
       }
-      /* Registered-but-idle → NOW full detail rows (was simple chips) */
       if (regNotWorking.length) {
         html += `<div class="br-section" style="margin-top:20px">Registered but not on Lane Line today (${regNotWorking.length})</div>`;
         html += regNotWorking.map((r, i) => regNotWorkingRow(r, i)).join('');
