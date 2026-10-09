@@ -2,10 +2,9 @@
 SCRIPT.JS  v3.9.0  —  Full Feature Engine
 NEW v3.9.0 (ATOT% support):
 - fetchActivetimeLow returns teamAVE, below80[], above80[]
-- openActivetimeLowPanel shows new 13-col data with ATOT%
-- QC view: Below 80% / Above 80% cards + Team AVE
-- Supervisor & Shift Supervisor: 2 new ATOT KPI cards
-Everything else unchanged from v3.8.0.
+- openActivetimeLowPanel(locFilter, category) + team grouping
+- QC view: clickable Below/Above cards + Team AVE
+- Supervisor & Shift Supervisor: 2 clickable ATOT KPI cards
 Depends on config.js loaded first (no defer)
 ================================================ */
 const S = {
@@ -500,7 +499,7 @@ function renderSupervisorDashboard(d) {
 
     /* ── NEW v3.9.0: ATOT Below 80% card ── */
     html += `
-    <div class="kpi-card kpi-clickable atot-below-card" onclick="openActivetimeLowPanel('${esc(locName)}')">
+    <div class="kpi-card kpi-clickable atot-below-card" onclick="openActivetimeLowPanel('${esc(locName)}','below')">
       <div class="kpi-icon-wrap kpi-red"><i class="fas fa-arrow-down"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">Below 80% ATOT</div>
@@ -512,7 +511,7 @@ function renderSupervisorDashboard(d) {
 
     /* ── NEW v3.9.0: ATOT Above 80% card ── */
     html += `
-    <div class="kpi-card kpi-clickable atot-above-card" onclick="openActivetimeLowPanel('${esc(locName)}')">
+    <div class="kpi-card kpi-clickable atot-above-card" onclick="openActivetimeLowPanel('${esc(locName)}','above')">
       <div class="kpi-icon-wrap kpi-green"><i class="fas fa-arrow-up"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">Above 80% ATOT</div>
@@ -541,7 +540,6 @@ function renderSupervisorDashboard(d) {
   D.supervisorView.innerHTML = html;
   console.log('✅ Supervisor dashboard rendered successfully');
 
-  /* ── fetch ATOT + Lane Cert for each location ── */
   const locNamesKeys = Object.keys(locations);
   locNamesKeys.forEach((locName, locIdx) => {
     fetchActivetimeLow(locName).then(d => {
@@ -1085,7 +1083,7 @@ function renderSSView(d) {
       </div>
 
       <!-- NEW v3.9.0: ATOT Below 80% -->
-      <div class="kpi-card kpi-clickable atot-below-card" onclick="openActivetimeLowPanel()">
+      <div class="kpi-card kpi-clickable atot-below-card" onclick="openActivetimeLowPanel(null,'below')">
         <div class="kpi-icon-wrap kpi-red"><i class="fas fa-arrow-down"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">Below 80% ATOT</div>
@@ -1096,7 +1094,7 @@ function renderSSView(d) {
       </div>
 
       <!-- NEW v3.9.0: ATOT Above 80% -->
-      <div class="kpi-card kpi-clickable atot-above-card" onclick="openActivetimeLowPanel()">
+      <div class="kpi-card kpi-clickable atot-above-card" onclick="openActivetimeLowPanel(null,'above')">
         <div class="kpi-icon-wrap kpi-green"><i class="fas fa-arrow-up"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">Above 80% ATOT</div>
@@ -1705,14 +1703,14 @@ function renderDashboard() {
       </button>
     </div>
     <div class="atot-cards-row">
-      <div class="atot-card atot-card-red">
+      <div class="atot-card atot-card-red clickable" onclick="openActivetimeLowPanel(null,'below')" title="Show employees below 80%">
         <div class="atot-card-icon"><i class="fas fa-arrow-down"></i></div>
         <div class="atot-card-body">
           <div class="atot-card-label">Below 80%</div>
           <div class="atot-card-val" id="atLowBelowQC">—</div>
         </div>
       </div>
-      <div class="atot-card atot-card-green">
+      <div class="atot-card atot-card-green clickable" onclick="openActivetimeLowPanel(null,'above')" title="Show employees above 80%">
         <div class="atot-card-icon"><i class="fas fa-arrow-up"></i></div>
         <div class="atot-card-body">
           <div class="atot-card-label">Above 80%</div>
@@ -2018,7 +2016,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
 });
 
 /* ================================================
-ACTIVE TIME LOW HOURS — v3.9.0 (ATOT% support)
+ACTIVE TIME & ATOT% — v3.9.0
 ================================================ */
 async function fetchActivetimeLow(locFilter) {
   const date      = fmtDate(D.datePicker.value);
@@ -2063,8 +2061,58 @@ async function fetchActivetimeLow(locFilter) {
   return d;
 }
 
-async function openActivetimeLowPanel(locFilter) {
-  const sub = locFilter ? locFilter : 'ATOT% Overview';
+/* ── helpers for ATOT panel ── */
+function cleanTeamName(t) {
+  return (t || '').replace(/\s*\([A-Za-z\s]+\)\s*$/, '').trim() || 'Unknown';
+}
+
+function atotPersonRow(e, i) {
+  const c  = e.atotPct >= 80 ? 'var(--green)'    : 'var(--red)';
+  const bg = e.atotPct >= 80 ? 'var(--green-bg)' : 'var(--red-bg)';
+  const br = e.atotPct >= 80 ? 'var(--green-br)' : 'var(--red-br)';
+  return `
+  <div class="br-row atot-row" style="animation-delay:${i * 15}ms">
+    <div class="atot-id-col">
+      <div class="atot-avatar">${(e.employee || e.email || '?')[0].toUpperCase()}</div>
+      <div class="atot-info">
+        <div class="atot-name">${esc(e.employee || e.email)}</div>
+        <div class="atot-sub">
+          <span><i class="fas fa-id-card"></i> ${esc(e.nationalId || 'N/A')}</span>
+          <span><i class="fas fa-users"></i> ${esc(cleanTeamName(e.tlQtc))}</span>
+          <span><i class="fas fa-map-marker-alt"></i> ${esc(e.location || 'N/A')}</span>
+        </div>
+      </div>
+    </div>
+    <div class="atot-hours-grid">
+      <div class="atot-hour-item">
+        <span class="atot-hour-label">Actual</span>
+        <span class="atot-hour-val">${esc(e.actualHours)}h</span>
+      </div>
+      <div class="atot-hour-item">
+        <span class="atot-hour-label">OT</span>
+        <span class="atot-hour-val">${esc(e.overtimeHours)}h</span>
+      </div>
+      <div class="atot-hour-item">
+        <span class="atot-hour-label">Expected</span>
+        <span class="atot-hour-val">${esc(e.expectedHours)}h</span>
+      </div>
+    </div>
+    <div class="atot-pct-col">
+      <span class="atot-pct-badge" style="background:${bg};color:${c};border-color:${br};">
+        ${e.atotPct.toFixed(1)}%
+      </span>
+      <span class="atot-att-status">${esc(e.attendance || '')}</span>
+    </div>
+  </div>`;
+}
+
+/* ── panel: locFilter = location (supervisor) | null
+          category  = 'below' | 'above' | null (all) ── */
+async function openActivetimeLowPanel(locFilter, category) {
+  let sub = locFilter ? locFilter : 'ATOT% Overview';
+  if (category === 'below') sub += ' · Below 80%';
+  if (category === 'above') sub += ' · Above 80%';
+
   openCenterModal('Active Time & ATOT%', sub,
     '<div class="qc-modal-spin"><div class="spin-ring"></div></div>');
 
@@ -2077,59 +2125,57 @@ async function openActivetimeLowPanel(locFilter) {
     const above = d.above80   || [];
     const ave   = d.teamAVE   || 0;
 
+    let list = emps;
+    if (category === 'below') list = below;
+    if (category === 'above') list = above;
+
     if (emps.length === 0) {
       document.getElementById('centerModalContent').innerHTML =
         '<div class="qc-empty"><i class="fas fa-user-check"></i>' +
         '<p>No employees found for today.</p></div>';
       return;
     }
+    if (list.length === 0) {
+      document.getElementById('centerModalContent').innerHTML = `
+      <div class="atot-summary-bar">
+        <div class="atot-sum-item"><span class="atot-sum-label">Team AVE</span>
+          <span class="atot-sum-val ${ave >= 80 ? 'c-green' : 'c-red'}">${ave.toFixed(1)}%</span></div>
+        <div class="atot-sum-item"><span class="atot-sum-label">Total</span>
+          <span class="atot-sum-val">${emps.length}</span></div>
+        <div class="atot-sum-item below"><span class="atot-sum-label">Below 80%</span>
+          <span class="atot-sum-val c-red">${below.length}</span></div>
+        <div class="atot-sum-item above"><span class="atot-sum-label">Above 80%</span>
+          <span class="atot-sum-val c-green">${above.length}</span></div>
+      </div>
+      <div class="qc-empty"><i class="fas fa-user-check"></i>
+        <p>No employees in this category 🎉</p></div>`;
+      return;
+    }
 
-    /* ── employee rows ── */
-    const rows = emps.map((e, i) => {
-      const c  = e.atotPct >= 80 ? 'var(--green)'    : 'var(--red)';
-      const bg = e.atotPct >= 80 ? 'var(--green-bg)' : 'var(--red-bg)';
-      const br = e.atotPct >= 80 ? 'var(--green-br)' : 'var(--red-br)';
+    /* ── group by team ── */
+    const groups = {};
+    list.forEach(e => {
+      const t = cleanTeamName(e.tlQtc);
+      (groups[t] = groups[t] || []).push(e);
+    });
 
-      return `
-      <div class="br-row atot-row" style="animation-delay:${i * 15}ms">
-        <div class="atot-id-col">
-          <div class="atot-avatar">${(e.employee || e.email || '?')[0].toUpperCase()}</div>
-          <div class="atot-info">
-            <div class="atot-name">${esc(e.employee || e.email)}</div>
-            <div class="atot-sub">
-              <span><i class="fas fa-id-card"></i> ${esc(e.nationalId || 'N/A')}</span>
-              <span><i class="fas fa-map-marker-alt"></i> ${esc(e.location || 'N/A')}</span>
-              <span><i class="fas fa-user-tie"></i> ${esc(e.tlQtc || 'N/A')}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="atot-hours-grid">
-          <div class="atot-hour-item">
-            <span class="atot-hour-label">Actual</span>
-            <span class="atot-hour-val">${esc(e.actualHours)}h</span>
-          </div>
-          <div class="atot-hour-item">
-            <span class="atot-hour-label">OT</span>
-            <span class="atot-hour-val">${esc(e.overtimeHours)}h</span>
-          </div>
-          <div class="atot-hour-item">
-            <span class="atot-hour-label">Expected</span>
-            <span class="atot-hour-val">${esc(e.expectedHours)}h</span>
-          </div>
-        </div>
-
-        <div class="atot-pct-col">
-          <span class="atot-pct-badge"
-                style="background:${bg};color:${c};border-color:${br};">
-            ${e.atotPct.toFixed(1)}%
-          </span>
-          <span class="atot-att-status">${esc(e.attendance || '')}</span>
-        </div>
+    let rowsHtml = '';
+    Object.keys(groups).sort().forEach(team => {
+      const arr    = groups[team];
+      const tAve   = arr.reduce((s, e) => s + e.atotPct, 0) / arr.length;
+      const tBelow = arr.filter(e => e.atotPct < 80).length;
+      rowsHtml += `
+      <div class="br-section atot-team-head" style="margin-top:18px">
+        <span><i class="fas fa-users"></i> ${esc(team)}</span>
+        <span class="atot-team-pills">
+          <span class="br-pill pill-blue">${arr.length} emp</span>
+          <span class="br-pill pill-red">${tBelow} below</span>
+          <span class="br-pill ${tAve >= 80 ? 'pill-green' : 'pill-red'}">AVE ${tAve.toFixed(1)}%</span>
+        </span>
       </div>`;
-    }).join('');
+      rowsHtml += arr.map((e, i) => atotPersonRow(e, i)).join('');
+    });
 
-    /* ── render ── */
     document.getElementById('centerModalContent').innerHTML = `
     <div class="atot-summary-bar">
       <div class="atot-sum-item">
@@ -2149,9 +2195,12 @@ async function openActivetimeLowPanel(locFilter) {
         <span class="atot-sum-val c-green">${above.length}</span>
       </div>
     </div>
-
-    <div class="br-section" style="margin-top:20px">Employee Details</div>
-    ${rows}`;
+    <div class="br-section" style="margin-top:20px">
+      ${category === 'below' ? 'Below 80% Employees' :
+        category === 'above' ? 'Above 80% Employees' : 'Employee Details'}
+      <span class="atot-team-pills"><span class="br-pill pill-blue">${list.length}</span></span>
+    </div>
+    ${rowsHtml}`;
 
   } catch (err) {
     document.getElementById('centerModalContent').innerHTML =
