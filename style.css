@@ -332,7 +332,7 @@ APP SHELL
 ================================================ */
 .app{ position:relative; z-index:1; max-width:1600px; margin:0 auto; padding:0 20px 60px; }
 
-/* ── Header ──────────────────────────────────────── */
+/* ── Header ─────────────────────────────────────── */
 .app-header{
   display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;
   gap:12px; padding:14px 20px;
@@ -1056,6 +1056,15 @@ ATOT% CARDS & DISPLAY (NEW v3.5)
 }
 .atot-card-val { font-size: 28px; font-weight: 800; line-height: 1; }
 
+/* clickable variant */
+.atot-card.clickable { cursor: pointer; }
+.atot-card.clickable:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--sh-md);
+}
+.atot-card-red.clickable:hover  { border-color: var(--red); }
+.atot-card-green.clickable:hover{ border-color: var(--green); }
+
 /* ── AVE display ── */
 .atot-ave-display {
   display: flex; align-items: center; justify-content: center;
@@ -1151,6 +1160,18 @@ ATOT% CARDS & DISPLAY (NEW v3.5)
   border: 1px solid;
 }
 .atot-att-status { font-size: 10px; color: var(--t-4); }
+
+/* ── team header inside ATOT panel ── */
+.atot-team-head {
+  justify-content: space-between;
+  align-items: center;
+}
+.atot-team-pills {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
 
 /* ── KPI card variants (supervisor / SS) ── */
 .atot-below-card { border-color: var(--red-br) !important; }
