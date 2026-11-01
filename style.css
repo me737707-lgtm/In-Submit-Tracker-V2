@@ -1193,3 +1193,18 @@ ATOT% CARDS & DISPLAY (NEW v3.5)
   .atot-hours-grid   { grid-template-columns: repeat(3, 1fr); }
   .atot-pct-col      { flex-direction: row; justify-content: flex-start; gap: 8px; }
 }
+
+/* ================================================
+   v3.6 — Pending Excel export button (header)
+   ================================================ */
+.export-btn{
+  display:inline-flex; align-items:center; gap:8px;
+  background:var(--green-bg); color:var(--green);
+  border:1px solid var(--green-br); border-radius:var(--r-md);
+  padding:9px 14px; font-size:13px; font-weight:600; font-family:inherit;
+  cursor:pointer; white-space:nowrap;
+  transition:background .2s, transform .15s, opacity .2s;
+}
+.export-btn:hover{ background:rgba(52,211,153,.22); transform:translateY(-1px); }
+.export-btn:disabled{ opacity:.65; cursor:progress; transform:none; }
+@media(max-width:768px){ .export-btn{ flex:1; justify-content:center; } }
