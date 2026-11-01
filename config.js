@@ -1,5 +1,7 @@
 /* ================================================
-   CONFIG.JS  v3.2
+   CONFIG.JS  v3.3
+   (v3.3: no setting changes - kept in sync with code.gs v3.13.0 / script.js v3.10.0.
+    Who can export Pending is controlled in code.gs: PENDING_EXPORT_USERS)
    ================================================ */
 const CONFIG = {
   // IMPORTANT: Replace this URL with your NEW deployment URL
