@@ -1,7 +1,9 @@
 /* ================================================
-STYLE.CSS  v3.5  —  Google + Apple Design System
+STYLE.CSS  v3.7  —  Google + Apple Design System
 Dark mode · Material You colours · SF Pro spacing
-(+ ATOT% cards, Below/Above 80%, Team AVE display)
+(+ ATOT% cards, Below/Above 80%, Team AVE display
+ + v3.6 Pending Excel export button
+ + v3.7 QC Custom Range picker & result cards)
 ================================================ */
 
 /* ── Tokens ──────────────────────────────────────── */
@@ -1208,3 +1210,66 @@ ATOT% CARDS & DISPLAY (NEW v3.5)
 .export-btn:hover{ background:rgba(52,211,153,.22); transform:translateY(-1px); }
 .export-btn:disabled{ opacity:.65; cursor:progress; transform:none; }
 @media(max-width:768px){ .export-btn{ flex:1; justify-content:center; } }
+
+/* ================================================
+   v3.7 — QC Custom Range (Active Time & ATOT%)
+   ================================================ */
+.at-range-box{
+  margin-top:16px;
+  background:var(--bg-glass2);
+  border:1px solid var(--br-1);
+  border-radius:var(--r-lg);
+  padding:14px 16px;
+}
+.at-range-head{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+}
+.at-range-title{
+  font-size:12px; font-weight:700; color:var(--t-3);
+  text-transform:uppercase; letter-spacing:.07em;
+  display:inline-flex; align-items:center; gap:7px;
+}
+.at-range-title i{ color:var(--orange); }
+.at-range-controls{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-left:auto;
+}
+.at-range-sep{ color:var(--t-4); font-size:12px; font-weight:700; }
+.at-range-controls .ctrl-date{ width:150px; }
+.at-range-result{ margin-top:12px; }
+.at-range-loading{
+  display:flex; align-items:center; gap:10px; padding:10px 4px;
+  color:var(--t-3); font-size:13px; font-weight:500;
+}
+.at-range-cards{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+}
+.at-range-item{
+  background:var(--sf-1); border:1px solid var(--br-1);
+  border-radius:var(--r-md); padding:8px 12px;
+  display:flex; flex-direction:column; gap:2px; min-width:86px;
+}
+.at-range-item.ok{ border-color:var(--green-br); }
+.at-range-item.bad{ border-color:var(--red-br); }
+.at-range-label{
+  font-size:9px; font-weight:700; color:var(--t-4);
+  text-transform:uppercase; letter-spacing:.07em;
+}
+.at-range-val{ font-size:20px; font-weight:800; color:var(--t-1); }
+.at-range-item.ok .at-range-val{ color:var(--green); }
+.at-range-item.bad .at-range-val{ color:var(--red); }
+.at-range-val-sm{ font-size:13px; font-weight:700; color:var(--t-2); }
+.at-range-err{
+  background:var(--red-bg); border:1px solid var(--red-br); color:var(--red);
+  padding:10px 14px; border-radius:var(--r-md); font-size:13px; font-weight:600;
+}
+/* the small "N days" chip inside range employee rows */
+.atot-range-days{
+  font-size:10px; color:var(--t-4); font-weight:600;
+}
+.atot-range-days i{ margin-right:3px; font-size:9px; }
+@media(max-width:768px){
+  .at-range-controls{ width:100%; margin-left:0; }
+  .at-range-controls .ctrl-date{ flex:1; width:auto; }
+  .at-range-cards{ align-items:stretch; }
+  .at-range-cards .tl-bd-btn{ margin-left:0 !important; }
+}
