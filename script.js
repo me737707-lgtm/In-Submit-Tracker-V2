@@ -1,12 +1,23 @@
 /* ================================================
-SCRIPT.JS  v3.10.0  —  Full Feature Engine
-NEW v3.10.0:
+SCRIPT.JS  v3.11.0  —  Full Feature Engine
+NEW v3.11.0 (SECURITY + QC CUSTOM RANGE + PERF):
+- SECURITY: login never uses a users list anymore — the typed credentials
+  are verified by the backend (action=login) and the browser receives only
+  the logged-in profile. The typed password is kept in memory only
+  (S.user.password) and is sent ONLY to authorise the Pending Excel export
+  (the backend re-checks it against the Login Users sheet).
+- QC "Active Time & ATOT%": new Custom Range picker (From / To + 7D / 30D
+  presets). It calls the new backend action activetimeRange and shows the
+  Team AVE over the selected days, below/above 80% and a full breakdown
+  panel with per-employee averages + AVE per day.
+- Role chip now recognises the normalized roles
+  (supervisor / shiftsupervisor / qc) so every user gets the right badge.
+PREVIOUS v3.10.0:
 - Locations fix: Active Time & Lane Line supervisor cards now filter by the
   backend's locKey (so Login location 106 also shows NC Unit 104 / NC Unit 105).
 - "Pending Excel" button (header) — only for users the backend flags with
   canExportPending. Exports Pending users of M / N / ON in one Excel sheet.
 PREVIOUS v3.9.0:
-NEW v3.9.0 (ATOT% support):
 - fetchActivetimeLow returns teamAVE, below80[], above80[]
 - openActivetimeLowPanel(locFilter, category) + team grouping
 - QC view: clickable Below/Above cards + Team AVE
@@ -19,7 +30,8 @@ const S = {
   user: null, users: [], loggedIn: false,
   _cache: {}, _cacheTs: {}, _timer: null,
   _loginRetries: 0,
-  _maxLoginRetries: 3
+  _maxLoginRetries: 3,
+  _atRange: null        /* v3.11.0: last custom range applied (QC Active Time) */
 };
 const D = {};
 
@@ -66,6 +78,7 @@ async function loadUsers() {
   try {
     const d = await api({action:'users'},'users_list', 0);
     if (d.success && d.users?.length) {
+      /* v3.11.0: profiles only — the backend NEVER sends passwords anymore */
       S.users = d.users;
       S._loginRetries = 0;
       console.log('✅ Users loaded:', S.users.length);
@@ -84,46 +97,31 @@ async function handleLogin(e) {
   const pass  = D.password.value.trim();
   setLoginState('loading');
 
-  if (!S.users.length) {
-    let loaded = false;
-    for (let i = 0; i < S._maxLoginRetries; i++) {
-      console.log(`Loading users attempt ${i + 1}...`);
-      loaded = await loadUsers();
-      if (loaded) break;
-      await new Promise(r => setTimeout(r, 800));
-    }
-    if (!loaded) {
-      try {
-        const d = await api({action:'login',username:uname,password:pass}, null, 1);
-        if (d.success) {
-          S.user = d;
-          S.loggedIn = true;
-          S.users = [{username:d.username,password:pass,role:d.role,permission:d.permission,shift:d.shift,locations:d.locations||''}];
-          console.log('✅ Direct login success:', d.role, d.permission, d.shift, d.locations);
-          D.loginOverlay.style.display = 'none';
-          renderUserChip(d);
-          initDashboard();
-          return;
-        }
-      } catch(e2) {
-        console.warn('Direct login fallback failed:', e2.message);
-      }
-      setLoginState('error','Server unavailable — check connection');
+  /* ── v3.11.0 SECURITY REWORK ──
+     - action=users no longer contains passwords, so matching against it
+       is impossible (and was unsafe anyway).
+     - The backend (action=login) verifies the credentials and returns the
+       profile of the logged-in user ONLY.                                */
+  try {
+    const d = await api({action:'login',username:uname,password:pass}, null, 0);
+    if (d && d.success) {
+      /* password kept in MEMORY only — used solely so the backend can
+         authorise the Pending Excel export (pendingPassword()) */
+      S.user = Object.assign({}, d, { password: pass });
+      S.loggedIn = true;
+      S._loginRetries = 0;
+      console.log('✅ Login success:', d.role, d.permission, d.shift, d.locations);
+      D.loginOverlay.style.display = 'none';
+      renderUserChip(S.user);
+      initDashboard();
       return;
     }
-  }
-
-  const found = S.users.find(u =>
-    u.username.toLowerCase()===uname.toLowerCase() && u.password===pass
-  );
-  if (found) {
-    S.user = found; S.loggedIn = true;
-    console.log('✅ Login success:', found.role, found.permission, found.shift, found.locations);
-    D.loginOverlay.style.display = 'none';
-    renderUserChip(found);
-    initDashboard();
-  } else {
-    setLoginState('error','Invalid username or password');
+    setLoginState('error', (d && d.error) || 'Invalid username or password');
+  } catch (err) {
+    console.warn('Login failed:', err.message);
+    setLoginState('error', err.name === 'AbortError'
+      ? 'Request timed out — try again'
+      : 'Server unavailable — check connection');
   }
 }
 
@@ -135,8 +133,13 @@ function setLoginState(state, msg) {
 }
 
 function renderUserChip(user) {
-  const roleMap   = {supervisors:'Supervisor',shiftSupervisor:'Shift Supervisor',Qc:'QC'};
-  const colorMap  = {supervisors:'chip-sup',shiftSupervisor:'chip-shift',Qc:'chip-qc'};
+  /* v3.11.0: backend normalizes roles to lowercase — map them all */
+  const roleMap   = {supervisor:'Supervisor',supervisors:'Supervisor',
+                     shiftsupervisor:'Shift Supervisor',shiftSupervisor:'Shift Supervisor',
+                     qc:'QC',Qc:'QC'};
+  const colorMap  = {supervisor:'chip-sup',supervisors:'chip-sup',
+                     shiftsupervisor:'chip-shift',shiftSupervisor:'chip-shift',
+                     qc:'chip-qc',Qc:'chip-qc'};
   D.userAvatar.textContent  = user.username[0].toUpperCase();
   D.userNameLabel.textContent = user.username;
   D.userRoleLabel.textContent = roleMap[user.role]||user.role;
@@ -147,7 +150,7 @@ function renderUserChip(user) {
 
 function handleLogout() {
   S.user=null; S.loggedIn=false; S.raw={}; S.filtered={};
-  S.firstLoad=true; S._loginRetries=0; cDel();
+  S.firstLoad=true; S._loginRetries=0; S._atRange=null; cDel();
   if (S._timer) { clearInterval(S._timer); S._timer=null; }
   D.userChip.style.display    = 'none';
   if (D.pendingExportBtn) D.pendingExportBtn.style.display = 'none';
@@ -1730,6 +1733,22 @@ function renderDashboard() {
       <span class="atot-ave-label">Team AVE</span>
       <span class="atot-ave-val" id="atLowAVEQC">—</span>
     </div>
+    <div class="at-range-box">
+      <div class="at-range-head">
+        <span class="at-range-title"><i class="fas fa-calendar-days"></i> Custom Range — Team AVE</span>
+        <div class="at-range-controls">
+          <input type="date" id="atFromQC" class="ctrl-date" title="From">
+          <span class="at-range-sep">→</span>
+          <input type="date" id="atToQC" class="ctrl-date" title="To">
+          <button class="tl-bd-btn" onclick="applyAtRange()" title="Calculate the Team AVE for these days">
+            <i class="fas fa-check"></i> Apply
+          </button>
+          <button class="tl-bd-btn" onclick="applyAtRangePreset(7)" title="Last 7 days">7D</button>
+          <button class="tl-bd-btn" onclick="applyAtRangePreset(30)" title="Last 30 days">30D</button>
+        </div>
+      </div>
+      <div id="atRangeResultQC" class="at-range-result" style="display:none"></div>
+    </div>
     `;
     dual.appendChild(qcSection);
 
@@ -1751,6 +1770,16 @@ function renderDashboard() {
     `;
     dual.appendChild(laneSection);
     D.mainContent.appendChild(dual);
+
+    /* v3.11.0: default the custom range to Today (no auto-fetch —
+       picking a range stays on demand so the dashboard loads fast) */
+    const atFromEl = document.getElementById('atFromQC');
+    const atToEl   = document.getElementById('atToQC');
+    if (atFromEl && atToEl && !atFromEl.value) {
+      const iso = atIsoToday();
+      atFromEl.value = iso;
+      atToEl.value   = iso;
+    }
 
     fetchActivetimeLow().then(d => {
       if (d.success) {
@@ -2221,6 +2250,229 @@ async function openActivetimeLowPanel(locFilter, category) {
 }
 
 /* ================================================
+ACTIVE TIME — CUSTOM RANGE (QC)  (v3.11.0)
+Team AVE over selected days — backend action=activetimeRange.
+Same client-cache/retry engine as every other call → fast reopens.
+================================================ */
+function atIsoToday() {
+  const now = new Date();
+  return now.getFullYear() + '-' +
+    String(now.getMonth() + 1).padStart(2, '0') + '-' +
+    String(now.getDate()).padStart(2, '0');
+}
+
+async function fetchActivetimeRange(fromD, toD) {
+  const shift     = S.user?.shift || '';
+  const locations = S.user?.locations || '';
+  const qtcName   = S.user?.username || '';
+  const cacheKey  = 'atrange_' + fromD + '_' + toD + '_' +
+    (shift||'').replace(/[^a-zA-Z0-9_-]/g,'_') + '_' +
+    (locations||'').replace(/[^a-zA-Z0-9_-]/g,'_') + '_' +
+    (qtcName||'').replace(/[^a-zA-Z0-9_-]/g,'_');
+  return api({
+    action: 'activetimeRange',
+    from: fromD, to: toD, shift, locations, qtcName
+  }, cacheKey, 0);
+}
+
+async function applyAtRange() {
+  const box = document.getElementById('atRangeResultQC');
+  if (!box) return;
+  const f = (document.getElementById('atFromQC') || {}).value || '';
+  const t = (document.getElementById('atToQC')   || {}).value || '';
+  if (!f || !t) {
+    box.style.display = 'block';
+    box.innerHTML = '<div class="at-range-err">Pick a From and To date.</div>';
+    return;
+  }
+  if (f > t) {
+    box.style.display = 'block';
+    box.innerHTML = '<div class="at-range-err">From date must be before To date.</div>';
+    return;
+  }
+  box.style.display = 'block';
+  box.innerHTML = '<div class="at-range-loading"><div class="spin-ring"></div><span>Calculating range AVE…</span></div>';
+  try {
+    const d = await fetchActivetimeRange(fmtDate(f), fmtDate(t));   /* backend wants dd-MM-yyyy */
+    if (!d || !d.success) throw new Error((d && d.error) || 'Failed');
+    S._atRange = { from: d.from, to: d.to };
+    renderAtRangeResult(d);
+  } catch (e) {
+    box.innerHTML = '<div class="at-range-err">' + esc(e.message || 'Failed') + '</div>';
+  }
+}
+
+/* quick presets: last N days (today included) */
+function applyAtRangePreset(days) {
+  const t = new Date();
+  const f = new Date(t.getTime() - (Number(days) - 1) * 86400000);
+  const iso = d => d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const fi = document.getElementById('atFromQC');
+  const ti = document.getElementById('atToQC');
+  if (fi) fi.value = iso(f);
+  if (ti) ti.value = iso(t);
+  applyAtRange();
+}
+
+function renderAtRangeResult(d) {
+  const box = document.getElementById('atRangeResultQC');
+  if (!box) return;
+  const ave   = d.teamAVE || 0;
+  const below = (d.below80 || []).length;
+  const above = (d.above80 || []).length;
+  box.innerHTML = `
+  <div class="at-range-cards">
+    <div class="at-range-item">
+      <span class="at-range-label">Range</span>
+      <span class="at-range-val-sm">${esc(d.from)} → ${esc(d.to)}</span>
+    </div>
+    <div class="at-range-item">
+      <span class="at-range-label">Days</span>
+      <span class="at-range-val-sm">${d.daysCount || 0}</span>
+    </div>
+    <div class="at-range-item">
+      <span class="at-range-label">Employees</span>
+      <span class="at-range-val-sm">${d.count || 0}</span>
+    </div>
+    <div class="at-range-item ${ave >= 80 ? 'ok' : 'bad'}">
+      <span class="at-range-label">Team AVE</span>
+      <span class="at-range-val">${ave.toFixed(1)}%</span>
+    </div>
+    <div class="at-range-item bad">
+      <span class="at-range-label">Below 80%</span>
+      <span class="at-range-val-sm">${below}</span>
+    </div>
+    <div class="at-range-item ok">
+      <span class="at-range-label">Above 80%</span>
+      <span class="at-range-val-sm">${above}</span>
+    </div>
+    <button class="tl-bd-btn" onclick="openActivetimeRangePanel()" style="margin-left:auto;">
+      <i class="fas fa-eye"></i> Range Breakdown
+    </button>
+  </div>`;
+}
+
+/* one employee → one row (range averages) */
+function atotRangePersonRow(e, i) {
+  const c  = e.avgAtot >= 80 ? 'var(--green)'    : 'var(--red)';
+  const bg = e.avgAtot >= 80 ? 'var(--green-bg)' : 'var(--red-bg)';
+  const br = e.avgAtot >= 80 ? 'var(--green-br)' : 'var(--red-br)';
+  return `
+  <div class="br-row atot-row" style="animation-delay:${i * 15}ms">
+    <div class="atot-id-col">
+      <div class="atot-avatar">${(e.employee || e.email || '?')[0].toUpperCase()}</div>
+      <div class="atot-info">
+        <div class="atot-name">${esc(e.employee || e.email)}</div>
+        <div class="atot-sub">
+          <span><i class="fas fa-id-card"></i> ${esc(e.nationalId || 'N/A')}</span>
+          <span><i class="fas fa-users"></i> ${esc(cleanTeamName(e.tlQtc))}</span>
+          <span><i class="fas fa-map-marker-alt"></i> ${esc(e.location || 'N/A')}</span>
+          <span class="atot-range-days"><i class="fas fa-calendar-check"></i> ${e.daysPresent} days</span>
+        </div>
+      </div>
+    </div>
+    <div class="atot-hours-grid">
+      <div class="atot-hour-item">
+        <span class="atot-hour-label">Actual</span>
+        <span class="atot-hour-val">${esc(e.actualHours)}h</span>
+      </div>
+      <div class="atot-hour-item">
+        <span class="atot-hour-label">OT</span>
+        <span class="atot-hour-val">${esc(e.overtimeHours)}h</span>
+      </div>
+      <div class="atot-hour-item">
+        <span class="atot-hour-label">Expected</span>
+        <span class="atot-hour-val">${esc(e.expectedHours)}h</span>
+      </div>
+    </div>
+    <div class="atot-pct-col">
+      <span class="atot-pct-badge" style="background:${bg};color:${c};border-color:${br};">
+        ${e.avgAtot.toFixed(1)}%
+      </span>
+      <span class="atot-att-status">avg over range</span>
+    </div>
+  </div>`;
+}
+
+/* full breakdown modal for the selected range */
+async function openActivetimeRangePanel() {
+  const r = S._atRange;
+  if (!r) return;
+  openCenterModal('Active Time & ATOT% — Custom Range', r.from + ' → ' + r.to,
+    '<div class="qc-modal-spin"><div class="spin-ring"></div></div>');
+  try {
+    const d = await fetchActivetimeRange(r.from, r.to);
+    if (!d || !d.success) throw new Error((d && d.error) || 'Failed');
+    const emps = d.employees || [];
+    const ave  = d.teamAVE || 0;
+    if (!emps.length) {
+      document.getElementById('centerModalContent').innerHTML =
+        '<div class="qc-empty"><i class="fas fa-user-check"></i>' +
+        '<p>No employees found in this range.</p></div>';
+      return;
+    }
+
+    /* AVE per day chips */
+    const dayPills = (d.perDay || []).map(p =>
+      '<span class="reg-chip">' + esc(p.date) + ': <strong>' + p.ave.toFixed(1) + '%</strong></span>'
+    ).join('');
+
+    /* group by team (same layout as the daily panel) */
+    const groups = {};
+    emps.forEach(e => {
+      const t = cleanTeamName(e.tlQtc);
+      (groups[t] = groups[t] || []).push(e);
+    });
+    let rowsHtml = '';
+    Object.keys(groups).sort().forEach(team => {
+      const arr    = groups[team];
+      const tAve   = arr.reduce((s, e) => s + e.avgAtot, 0) / arr.length;
+      const tBelow = arr.filter(e => e.avgAtot < 80).length;
+      rowsHtml += `
+      <div class="br-section atot-team-head" style="margin-top:18px">
+        <span><i class="fas fa-users"></i> ${esc(team)}</span>
+        <span class="atot-team-pills">
+          <span class="br-pill pill-blue">${arr.length} emp</span>
+          <span class="br-pill pill-red">${tBelow} below</span>
+          <span class="br-pill ${tAve >= 80 ? 'pill-green' : 'pill-red'}">AVE ${tAve.toFixed(1)}%</span>
+        </span>
+      </div>`;
+      rowsHtml += arr.map((e, i) => atotRangePersonRow(e, i)).join('');
+    });
+
+    document.getElementById('centerModalContent').innerHTML = `
+    <div class="atot-summary-bar">
+      <div class="atot-sum-item">
+        <span class="atot-sum-label">Range Team AVE</span>
+        <span class="atot-sum-val ${ave >= 80 ? 'c-green' : 'c-red'}">${ave.toFixed(1)}%</span>
+      </div>
+      <div class="atot-sum-item">
+        <span class="atot-sum-label">Employees</span>
+        <span class="atot-sum-val">${emps.length}</span>
+      </div>
+      <div class="atot-sum-item below">
+        <span class="atot-sum-label">Below 80%</span>
+        <span class="atot-sum-val c-red">${(d.below80 || []).length}</span>
+      </div>
+      <div class="atot-sum-item above">
+        <span class="atot-sum-label">Above 80%</span>
+        <span class="atot-sum-val c-green">${(d.above80 || []).length}</span>
+      </div>
+    </div>
+    ${dayPills ? `
+    <div class="br-section"><i class="fas fa-calendar-days"></i> AVE per day (${(d.perDay || []).length})</div>
+    <div class="reg-chips">${dayPills}</div>` : ''}
+    <div class="br-section" style="margin-top:20px">Employee Averages (range)</div>
+    ${rowsHtml}`;
+  } catch (err) {
+    document.getElementById('centerModalContent').innerHTML =
+      '<div class="qc-empty"><i class="fas fa-triangle-exclamation"></i>' +
+      '<p>' + err.message + '</p></div>';
+  }
+}
+
+/* ================================================
 LANE LINE CERTIFICATION (v3.8.0 — Shift Sup sees Not Certified rows)
 ================================================ */
 async function fetchLaneLineCert(locFilter) {
@@ -2502,9 +2754,9 @@ const EXCELJS_URLS = [
 ];
 
 function pendingPassword() {
-  if (S.user && S.user.password) return S.user.password;
-  const f = (S.users || []).find(u => u.username === (S.user && S.user.username));
-  return f ? f.password : '';
+  /* v3.11.0: the typed password lives only in S.user (memory). The users
+     list can't leak it anymore — the backend never sends passwords. */
+  return (S.user && S.user.password) || '';
 }
 
 function pendingToast(msg, icon) {
