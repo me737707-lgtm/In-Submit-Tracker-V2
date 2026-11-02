@@ -10,7 +10,6 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <link rel="stylesheet" href="style.css">
 <base target="_self">
-<base target="_blank">
 </head>
 <body>
 
@@ -88,9 +87,6 @@
         <option value="all">All Locations</option>
       </select>
       <input id="datePicker" type="date" class="ctrl-date" onchange="manualRefresh()">
-      <button id="pendingExportBtn" class="export-btn" style="display:none" onclick="exportPendingExcel()" title="Export Pending users (M / N / ON) to Excel">
-        <i class="fas fa-file-excel"></i><span>Pending Excel</span>
-      </button>
       <div id="userChip" class="user-chip" style="display:none">
         <div class="user-avatar" id="userAvatar">U</div>
         <div class="user-meta">
