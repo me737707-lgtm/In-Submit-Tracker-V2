@@ -1,7 +1,9 @@
 /* ================================================
-   CONFIG.JS  v3.3
-   (v3.3: no setting changes - kept in sync with code.gs v3.13.0 / script.js v3.10.0.
-    Who can export Pending is controlled in code.gs: PENDING_EXPORT_USERS)
+   CONFIG.JS  v3.4
+   (v3.4: no setting changes - kept in sync with code.gs v3.14.0 / script.js v3.11.0.
+    - Security is handled in code.gs: passwords are never sent to the browser.
+    - Who can export Pending is controlled in code.gs: PENDING_EXPORT_USERS.
+    - QC Custom Range is limited in code.gs: AT_RANGE_MAX_DAYS.)
    ================================================ */
 const CONFIG = {
   // IMPORTANT: Replace this URL with your NEW deployment URL
