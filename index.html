@@ -2,14 +2,17 @@
 <html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Submit Tracker</title>
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <link rel="stylesheet" href="style.css">
-<base target="_self">
+  <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"></noscript>
+  <link rel="stylesheet" href="style.css?v=4.0.0">
+  <base target="_self">
 </head>
 <body>
 
@@ -87,6 +90,9 @@
         <option value="all">All Locations</option>
       </select>
       <input id="datePicker" type="date" class="ctrl-date" onchange="manualRefresh()">
+      <button id="pendingExportBtn" class="export-btn" style="display:none" onclick="exportPendingExcel()" title="Export Pending users (M / N / ON) to Excel">
+        <i class="fas fa-file-excel"></i><span>Pending Excel</span>
+      </button>
       <div id="userChip" class="user-chip" style="display:none">
         <div class="user-avatar" id="userAvatar">U</div>
         <div class="user-meta">
@@ -114,7 +120,15 @@
 <!-- Toast -->
 <div id="toast" class="toast"><i class="fas fa-rotate"></i> Updated</div>
 
-<script src="config.js"></script>
-<script src="script.js"></script>
+<!-- order matters: config → core → views → panels → atot → lanecert → export -->
+<script defer src="config.js?v=4.0.0"></script>
+<script defer src="core.js?v=4.0.0"></script>
+<script defer src="views-main.js?v=4.0.0"></script>
+<script defer src="views-supervisor.js?v=4.0.0"></script>
+<script defer src="views-shift.js?v=4.0.0"></script>
+<script defer src="panels.js?v=4.0.0"></script>
+<script defer src="atot.js?v=4.0.0"></script>
+<script defer src="lanecert.js?v=4.0.0"></script>
+<script defer src="export.js?v=4.0.0"></script>
 </body>
 </html>

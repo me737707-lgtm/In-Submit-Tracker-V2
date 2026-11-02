@@ -1,17 +1,17 @@
 /* ================================================
-   CONFIG.JS  v3.4
-   (v3.4: no setting changes - kept in sync with code.gs v3.14.0 / script.js v3.11.0.
-    - Security is handled in code.gs: passwords are never sent to the browser.
-    - Who can export Pending is controlled in code.gs: PENDING_EXPORT_USERS.
-    - QC Custom Range is limited in code.gs: AT_RANGE_MAX_DAYS.)
+   CONFIG.JS  v4.0.0
    ================================================ */
 const CONFIG = {
   // IMPORTANT: Replace this URL with your NEW deployment URL
   // After deploying code.gs, copy the Web App URL here
   API_URL: 'https://script.google.com/macros/s/AKfycbx2CofzmDfo__LoHMhhGJK9gORIDJMp7ygQW5gAfFYPX3VE5yKvx8X2buoPT11SXQkj/exec',
 
-  REFRESH_INTERVAL:        30000,   // 30s auto-refresh
-  REQUEST_TIMEOUT:         14000,   // 14s abort
+  TZ:                      'Africa/Cairo',      // dashboard "today" follows Cairo time
+  SESSION_KEY:             'st_session_v4',     // localStorage key for the login token
+  ATOT_MAX_RANGE_DAYS:     62,                  // custom range limit (same as the backend)
+
+  REFRESH_INTERVAL:        30000,   // 30s auto-refresh (paused while the tab is hidden)
+  REQUEST_TIMEOUT:         14000,   // 14s abort (batch / login get 1.5x)
   CLIENT_CACHE_TTL:        24000,   // 24s client cache
   ANIMATION_STAGGER_DELAY: 55,
 
