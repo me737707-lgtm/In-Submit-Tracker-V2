@@ -1,5 +1,5 @@
 /* ================================================
-STYLE.CSS  v4.0.0  —  Google + Apple Design System
+STYLE.CSS  v4.1.0  —  Google + Apple Design System
 Dark mode · Material You colours · SF Pro spacing
 (+ ATOT% cards, Below/Above 80%, Team AVE display)
 ================================================ */
@@ -362,6 +362,8 @@ APP SHELL
 .status-pill.live   { background:var(--green-bg);  color:var(--green);  border:1px solid var(--green-br); }
 .status-pill.error  { background:var(--red-bg);    color:var(--red);    border:1px solid var(--red-br);   }
 .status-pill.loading{ background:var(--blue-bg);   color:var(--blue);   border:1px solid var(--blue-br);  }
+.status-pill.warn   { background:var(--yellow-bg); color:var(--yellow); border:1px solid var(--yellow-br); cursor:pointer; }
+.status-pill.error  { cursor:pointer; }
 .status-dot{
   width:7px; height:7px; border-radius:50%; background:currentColor;
   box-shadow:0 0 8px currentColor; animation:pulse 2s ease-in-out infinite;
