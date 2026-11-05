@@ -1,5 +1,5 @@
 /* ================================================
-CORE.JS  v4.0.0 — state · API · session · init · helpers
+CORE.JS  v4.1.0 — state · API · session · init · helpers
 Load order (all with defer):  config.js → core.js → views-*.js → panels.js → atot.js → lanecert.js → export.js
 ================================================
 SECURITY (v4.0.0)
@@ -15,7 +15,8 @@ const S = {
   search: '', lastHash: '', firstLoad: true, loading: false,
   user: null, token: '', exp: 0, loggedIn: false,
   _cache: {}, _cacheTs: {}, _inflight: {}, _sig: {}, _timer: null, _refreshFn: null, _hiddenAt: 0,
-  atRange: null            /* QC custom ATOT range (see atot.js) */
+  atRange: null,           /* QC custom ATOT range (see atot.js) */
+  health: null, _healthTimer: null     /* data-pipeline health (status pill) */
 };
 const D = {};
 
@@ -180,12 +181,13 @@ function renderUserChip(user) {
 }
 function stopAutoRefresh() {
   if (S._timer) { clearInterval(S._timer); S._timer = null; }
+  if (S._healthTimer) { clearInterval(S._healthTimer); S._healthTimer = null; }
   S._refreshFn = null;
 }
 function handleLogout(reason) {
   stopAutoRefresh();
   S.user=null; S.token=''; S.exp=0; S.loggedIn=false; S.raw={}; S.filtered={};
-  S.firstLoad=true; S.lastHash=''; S._sig={}; S.atRange=null; S._inflight={};
+  S.firstLoad=true; S.lastHash=''; S._sig={}; S.atRange=null; S._inflight={}; S.health=null;
   cDel(); clearSession();
   try { closeCenterModal(); } catch(e){}
   D.userChip.style.display    = 'none';
@@ -256,10 +258,35 @@ function initDashboard() {
     fetchMain(true);
     startAutoRefresh(fetchMain);
   }
+  startHealth();
 }
 function setStatus(s) {
+  const h = S.health;
+  if (s === 'live' && h && h.level && h.level !== 'ok') {      /* the page works but the DATA is late / stopped */
+    D.statusPill.className = 'status-pill ' + (h.level === 'error' ? 'error' : 'warn');
+    D.statusLabel.textContent = h.short || 'Data delayed';
+    D.statusPill.title = h.message || '';
+    return;
+  }
+  D.statusPill.title = '';
   D.statusPill.className = 'status-pill '+s;
   D.statusLabel.textContent = {live:'Live',error:'Error',loading:'Connecting'}[s]||s;
+}
+/* data-pipeline health: the server compares the Data Base with the dashboard tabs + sync heartbeat */
+async function checkHealth() {
+  if (!S.loggedIn || document.hidden) return;
+  try {
+    const d = await api({ action: 'health' }, null);
+    if (!d || d.success === false) return;
+    const was = S.health && S.health.level;
+    S.health = d;
+    if (D.statusPill.classList.contains('live') || D.statusPill.classList.contains('warn') || (d.level === 'ok' && was && was !== 'ok')) setStatus('live');
+  } catch (e) { /* the normal fetches already show connection errors */ }
+}
+function startHealth() {
+  if (S._healthTimer) clearInterval(S._healthTimer);
+  checkHealth();
+  S._healthTimer = setInterval(checkHealth, 120000);
 }
 /* come back to the tab → refresh right away if the data is old */
 document.addEventListener('visibilitychange', () => {
@@ -329,6 +356,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
     panelSub:      document.getElementById('panelSub'),
     panelContent:  document.getElementById('panelContent'),
     toast:         document.getElementById('toast'),
+  });
+  D.statusPill.addEventListener('click', ()=>{
+    if (S.health && S.health.level !== 'ok' && typeof pendingToast === 'function') pendingToast(S.health.message, 'fa-triangle-exclamation');
   });
   document.addEventListener('keydown', ev=>{
     if ((ev.ctrlKey||ev.metaKey)&&ev.key==='k'){ ev.preventDefault(); D.searchInput.focus(); }
