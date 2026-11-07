@@ -1,5 +1,5 @@
 /* ================================================
-CORE.JS  v4.1.0 — state · API · session · init · helpers
+CORE.JS  v4.2.0 — state · API · session · init · helpers
 Load order (all with defer):  config.js → core.js → views-*.js → panels.js → atot.js → lanecert.js → export.js
 ================================================
 SECURITY (v4.0.0)
@@ -28,6 +28,21 @@ function cGet(k) {
   return null;
 }
 function cSet(k,v){ S._cache[k]=v; S._cacheTs[k]=Date.now(); }
+/* ── INSTANT PAINT (v4.2.0): the last good answer is kept in localStorage and drawn at once,
+      then the fresh answer replaces it (the user never waits on an empty screen) ── */
+const SWR_MAX_AGE = 12 * 3600 * 1000;
+function swrKey(k) { return 'st_swr:' + (S.user ? S.user.username : '') + ':' + k; }
+function swrSave(k, data) { try { localStorage.setItem(swrKey(k), JSON.stringify({ t: Date.now(), d: data })); } catch (e) {} }
+function swrLoad(k) {
+  try {
+    const o = JSON.parse(localStorage.getItem(swrKey(k)) || 'null');
+    if (o && o.d && Date.now() - o.t < SWR_MAX_AGE) return o.d;
+  } catch (e) {}
+  return null;
+}
+function swrClear() {
+  try { Object.keys(localStorage).filter(k => k.indexOf('st_swr:') === 0).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+}
 function cDel(prefix){
   Object.keys(S._cache).forEach(k=>{
     if (!prefix||k.startsWith(prefix)){ delete S._cache[k]; delete S._cacheTs[k]; }
@@ -188,7 +203,7 @@ function handleLogout(reason) {
   stopAutoRefresh();
   S.user=null; S.token=''; S.exp=0; S.loggedIn=false; S.raw={}; S.filtered={};
   S.firstLoad=true; S.lastHash=''; S._sig={}; S.atRange=null; S._inflight={}; S.health=null;
-  cDel(); clearSession();
+  cDel(); clearSession(); swrClear();
   try { closeCenterModal(); } catch(e){}
   D.userChip.style.display    = 'none';
   if (D.pendingExportBtn) D.pendingExportBtn.style.display = 'none';
@@ -269,24 +284,31 @@ function setStatus(s) {
     return;
   }
   D.statusPill.title = '';
-  D.statusPill.className = 'status-pill '+s;
-  D.statusLabel.textContent = {live:'Live',error:'Error',loading:'Connecting'}[s]||s;
+  D.statusPill.className = 'status-pill ' + (s === 'updating' ? 'loading' : s);
+  D.statusLabel.textContent = {live:'Live',error:'Error',loading:'Connecting',updating:'Updating'}[s]||s;
 }
-/* data-pipeline health: the server compares the Data Base with the dashboard tabs + sync heartbeat */
+/* ── data-pipeline health ──
+   v4.2.0: it rides inside the normal batch (no extra request). checkHealth() is only a fallback. */
+function healthItems() {
+  return (Date.now() - (S._healthAt || 0) > 110000) ? [{ key: 'health', params: { action: 'health' } }] : [];
+}
+function absorbHealth() {
+  const h = cGet('health');
+  if (h && h.success !== false && h.level) { S.health = h; S._healthAt = Date.now(); }
+}
 async function checkHealth() {
   if (!S.loggedIn || document.hidden) return;
   try {
     const d = await api({ action: 'health' }, null);
-    if (!d || d.success === false) return;
-    const was = S.health && S.health.level;
-    S.health = d;
-    if (D.statusPill.classList.contains('live') || D.statusPill.classList.contains('warn') || (d.level === 'ok' && was && was !== 'ok')) setStatus('live');
+    if (!d || d.success === false || !d.level) return;
+    S.health = d; S._healthAt = Date.now();
+    const cls = D.statusPill.className;
+    if (/live|warn/.test(cls) || d.level === 'ok') setStatus('live');
   } catch (e) { /* the normal fetches already show connection errors */ }
 }
 function startHealth() {
   if (S._healthTimer) clearInterval(S._healthTimer);
-  checkHealth();
-  S._healthTimer = setInterval(checkHealth, 120000);
+  S._healthTimer = setInterval(() => { if (Date.now() - (S._healthAt || 0) > 300000) checkHealth(); }, 60000);
 }
 /* come back to the tab → refresh right away if the data is old */
 document.addEventListener('visibilitychange', () => {
