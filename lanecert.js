@@ -1,10 +1,11 @@
 /* ================================================
-LANECERT.JS  v4.0.0 — Lane Line certification
+LANECERT.JS  v4.2.0 — Lane Line certification
 ================================================ */
 /* ================================================
 LANE LINE CERTIFICATION (v3.8.0 — Shift Sup sees Not Certified rows)
 ================================================ */
 async function fetchLaneLineCert(locFilter) {
+  if (S._stalePaint) return new Promise(() => {});       /* see fetchActivetimeLow */
   const date = fmtDate(D.datePicker.value);
   const d = await api({ action: 'laneLineCert', date }, K.lane(date));
 
