@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-MAIN.JS  v4.0.0 — main dashboard (QC / admin) · filters · search
+VIEWS-MAIN.JS  v4.2.0 — main dashboard (QC / admin) · filters · search
 ================================================ */
 /* ================================================
 MAIN DASHBOARD FETCH
@@ -10,35 +10,49 @@ async function fetchMain(showLoader, manual) {
   const key  = K.dash(date);
   try {
     S.loading = true;
-    if (showLoader) renderLoader(D.mainContent);
-    if (isQcUser()) {      /* QC: dashboard + Active Time + Lane Line in ONE round trip */
-      await primeBatch([
-        { key: K.dash(date),  params: { action:'main', date } },
-        { key: K.atlow(date), params: { action:'activetimeLow', date } },
-        { key: K.lane(date),  params: { action:'laneLineCert', date } }
-      ]);
+    if (showLoader) {
+      const st = swrLoad(key);
+      if (st && st.data && Object.keys(st.data).length) {       /* instant paint, refresh right after */
+        S._stalePaint = true;
+        try { applyMain(st, true, true); } finally { S._stalePaint = false; }
+        setStatus('updating');
+      } else renderLoader(D.mainContent);
     }
+    /* ONE round trip: dashboard (+ Active Time + Lane Line for QC) (+ health when due) */
+    const items = [{ key: K.dash(date), params: { action:'main', date } }];
+    if (isQcUser()) {
+      items.push({ key: K.atlow(date), params: { action:'activetimeLow', date } },
+                 { key: K.lane(date),  params: { action:'laneLineCert', date } });
+    }
+    await primeBatch(items.concat(healthItems()));
+    absorbHealth();
     const json = await api({action:'main',date}, key, 0);
-    const data = json.data||{};
-    if (!Object.keys(data).length) {
-      renderEmpty(D.mainContent, 'No data for '+date+'. Check the date or wait for sync.');
-      setStatus('error'); return;
-    }
-    S.raw      = data;
-    S.filtered = filterForUser(data);
-    setStatus('live');
-    const hash = makeHash(S.filtered);
-    if (hash!==S.lastHash || showLoader || manual) {
-      S.lastHash = hash;
-      rebuildFilters();
-      renderDashboard();
-      if (!showLoader&&!manual) showToast();
-    }
-    S.firstLoad = false;
+    swrSave(key, json);
+    applyMain(json, showLoader, manual);
   } catch(e) {
     setStatus('error');
     renderError(D.mainContent, e);
   } finally { S.loading=false; }
+}
+function applyMain(json, showLoader, manual) {
+  const date = fmtDate(D.datePicker.value);
+  const data = json.data||{};
+  if (!Object.keys(data).length) {
+    renderEmpty(D.mainContent, 'No data for '+date+'. Check the date or wait for sync.');
+    setStatus('error'); return false;
+  }
+  S.raw      = data;
+  S.filtered = filterForUser(data);
+  setStatus('live');
+  const hash = makeHash(S.filtered);
+  if (hash!==S.lastHash || showLoader || manual) {
+    S.lastHash = hash;
+    rebuildFilters();
+    renderDashboard();
+    if (!showLoader&&!manual) showToast();
+  }
+  S.firstLoad = false;
+  return true;
 }
 
 function manualRefresh() {
