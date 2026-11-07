@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-SHIFT.JS  v4.0.0 — shift supervisor view
+VIEWS-SHIFT.JS  v4.2.0 — shift supervisor view
 ================================================ */
 /* ================================================
 SHIFT SUPERVISOR VIEW
@@ -22,16 +22,27 @@ async function fetchShiftSupervisor(full) {
 
   const date  = fmtDate(D.datePicker.value);
   const key   = K.ss(shift, date);
-  if (full) { D.ssView.innerHTML='<div class="ss-skeleton"><div class="spin-ring"></div><p>Loading shift data…</p></div>'; }
+  if (full) {
+    const st = swrLoad(key);
+    if (st && st.success) {                                    /* instant paint, refresh right after */
+      S._stalePaint = true;
+      try { renderSSView(st); } finally { S._stalePaint = false; }
+      setStatus('updating');
+    } else {
+      D.ssView.innerHTML='<div class="ss-skeleton"><div class="spin-ring"></div><p>Loading shift data…</p></div>';
+    }
+  }
 
   try {
     await primeBatch([
       { key: key,           params: { action:'shiftSupervisor', date } },
       { key: K.atlow(date), params: { action:'activetimeLow', date } },
       { key: K.lane(date),  params: { action:'laneLineCert', date } }
-    ]);
+    ].concat(healthItems()));
+    absorbHealth();
     const d = await api({action:'shiftSupervisor',date}, key, 0);
     if (!d.success) throw new Error(d.error||'Failed');
+    swrSave(key, d);
     const sig = JSON.stringify(d);
     if (!full && sig === S._sig.ss) { setStatus('live'); return; }      /* nothing changed → no re-render */
     S._sig.ss = sig;
