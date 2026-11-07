@@ -1,10 +1,13 @@
 /* ================================================
-ATOT.JS  v4.0.0 — Active Time & ATOT% (day view + QC custom range)
+ATOT.JS  v4.2.0 — Active Time & ATOT% (day view + QC custom range)
 ================================================ */
 /* ================================================
 ACTIVE TIME & ATOT% — v3.9.0
 ================================================ */
 async function fetchActivetimeLow(locFilter) {
+  /* during the instant paint the fresh batch is already on its way → don't start a second request;
+     the full render that follows asks again (and finds the answer in the cache) */
+  if (S._stalePaint) return new Promise(() => {});
   const date = fmtDate(D.datePicker.value);
   const d = await api({ action: 'activetimeLow', date }, K.atlow(date));
 
