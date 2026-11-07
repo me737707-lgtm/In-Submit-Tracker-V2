@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-SUPERVISOR.JS  v4.0.0 — supervisor dashboard
+VIEWS-SUPERVISOR.JS  v4.2.0 — supervisor dashboard
 ================================================ */
 /* ================================================
 SUPERVISOR DASHBOARD
@@ -19,16 +19,25 @@ async function fetchSupervisorDashboard(full) {
   const date = fmtDate(D.datePicker.value);
   const key = K.supdash(date);
   if (full) {
-    D.supervisorView.innerHTML = '<div class="ss-skeleton"><div class="spin-ring"></div><p>Loading supervisor data…</p></div>';
+    const st = swrLoad(key);
+    if (st && st.success) {                                    /* instant paint, refresh right after */
+      S._stalePaint = true;
+      try { renderSupervisorDashboard(st); } finally { S._stalePaint = false; }
+      setStatus('updating');
+    } else {
+      D.supervisorView.innerHTML = '<div class="ss-skeleton"><div class="spin-ring"></div><p>Loading supervisor data…</p></div>';
+    }
   }
   try {
     await primeBatch([
       { key: key,          params: { action:'supervisorDashboard', date } },
       { key: K.atlow(date), params: { action:'activetimeLow', date } },
       { key: K.lane(date),  params: { action:'laneLineCert', date } }
-    ]);
+    ].concat(healthItems()));
+    absorbHealth();
     const d = await api({action:'supervisorDashboard',date}, key, 0);
     if (!d.success) throw new Error(d.error || 'Failed');
+    swrSave(key, d);
     const sig = JSON.stringify(d);
     if (!full && sig === S._sig.sup) { setStatus('live'); return; }     /* nothing changed → no re-render */
     S._sig.sup = sig;
