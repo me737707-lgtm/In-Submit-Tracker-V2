@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-SUPERVISOR.JS  v4.3.0 — supervisor dashboard
+VIEWS-SUPERVISOR.JS  v4.4.0 — supervisor dashboard
 ================================================ */
 /* ================================================
 SUPERVISOR DASHBOARD
@@ -601,26 +601,9 @@ function joinAnd(list) {
   if (list.length <= 1) return list[0] || '';
   return list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
 }
-function buildShiftReport(d) {
-  const locs = (d && d.locations) || {};
-  let active = 0, pending = 0, tasks = 0, lfp = 0, lqa = 0, llfp = 0, llqa = 0, shiftWord = '';
+function reportLabels(names) {
   const labels = [];
-  Object.keys(locs).forEach(name => {
-    const l = locs[name] || {}, att = l.attendance || {}, t = l.tasks || {};
-    active  += att.totalActive || 0;
-    pending += l.totalPending  || 0;
-    tasks   += t.total || 0;
-    lfp  += (t.LIDAR && t.LIDAR.FP) || 0;       lqa  += (t.LIDAR && t.LIDAR.QA) || 0;
-    llfp += (t.LaneLine && t.LaneLine.FP) || 0; llqa += (t.LaneLine && t.LaneLine.QA) || 0;
-    (l.reportRooms && l.reportRooms.length ? l.reportRooms : [name]).forEach(r => {
-      const s = shortRoomLabel(r);
-      if (s && labels.indexOf(s) === -1) labels.push(s);
-    });
-    if (!shiftWord) {
-      if (CONFIG.SHIFT_LABELS[l.shift]) shiftWord = CONFIG.SHIFT_LABELS[l.shift] + ' Shift';
-      else if (l.shift === 'All Shifts') shiftWord = 'All Shifts';
-    }
-  });
+  names.forEach(r => { const s = shortRoomLabel(r); if (s && labels.indexOf(s) === -1) labels.push(s); });
   labels.sort((a, b) => {
     const an = /^\d+$/.test(a), bn = /^\d+$/.test(b);
     if (an && bn) return Number(a) - Number(b);
@@ -628,7 +611,28 @@ function buildShiftReport(d) {
     return a.localeCompare(b);
   });
   const allNum = labels.length > 0 && labels.every(l => /^\d+$/.test(l));
-  const scope = (allNum ? (labels.length > 1 ? 'Rooms ' : 'Room ') : '') + joinAnd(labels);
+  return (allNum ? (labels.length > 1 ? 'Rooms ' : 'Room ') : '') + joinAnd(labels);
+}
+/* d = answer of "shiftReport" (all the rooms of the same person)  — or the dashboard answer as a fallback */
+function buildShiftReport(d) {
+  const locs = (d && d.locations) || {};
+  let active = 0, pending = 0, tasks = 0, lfp = 0, lqa = 0, llfp = 0, llqa = 0, shiftWord = '';
+  const names = [];
+  Object.keys(locs).forEach(name => {
+    const l = locs[name] || {}, att = l.attendance || {}, t = l.tasks || {};
+    active  += att.totalActive || 0;
+    pending += l.totalPending  || 0;
+    tasks   += t.total || 0;
+    lfp  += (t.LIDAR && t.LIDAR.FP) || 0;       lqa  += (t.LIDAR && t.LIDAR.QA) || 0;
+    llfp += (t.LaneLine && t.LaneLine.FP) || 0; llqa += (t.LaneLine && t.LaneLine.QA) || 0;
+    (l.reportRooms && l.reportRooms.length ? l.reportRooms : [name]).forEach(r => names.push(r));
+    if (!shiftWord) {
+      if (CONFIG.SHIFT_LABELS[l.shift]) shiftWord = CONFIG.SHIFT_LABELS[l.shift] + ' Shift';
+      else if (l.shift === 'All Shifts') shiftWord = 'All Shifts';
+    }
+  });
+  const scopeNames = (d && (d.scopeRooms || d.reportScope)) || names;      /* server list wins: it includes rooms of the same person */
+  const scope = reportLabels(scopeNames);
   const title = 'Production Overview for ' + scope + (shiftWord ? ' \u2013 ' + shiftWord : '');
   const p = (D.datePicker.value || '').split('-');
   const dateTxt = p.length === 3 ? (Number(p[2]) + '/' + Number(p[1]) + '/' + p[0]) : (D.datePicker.value || '');
@@ -646,9 +650,19 @@ function buildShiftReport(d) {
   ].join('\n');
   return { title, scope, text };
 }
-function openShiftReport() {
-  const d = S._supData;
-  if (!d) return;
+async function openShiftReport() {
+  if (!S._supData) return;
+  const date = fmtDate(D.datePicker.value);
+  openCenterModal('End of Shift Report', 'Collecting the numbers of all your rooms…', null);   /* spinner */
+  let d = null, note = 'Numbers of all your rooms combined, as shown now';
+  try {
+    d = await api({ action: 'shiftReport', date }, K.report(date));
+    if (!d || d.success === false) throw new Error((d && d.error) || 'Report failed');
+  } catch (e) {
+    if (e.isAuth) return;
+    d = Object.assign({}, S._supData, { reportScope: null });   /* fallback: only the rooms this dashboard shows (title must match the numbers) */
+    note = '⚠ Could not load the combined numbers — this report covers only the rooms on this dashboard';
+  }
   const r = buildShiftReport(d);
   S._shiftReportText = r.text;
   let now = '';
@@ -657,7 +671,7 @@ function openShiftReport() {
   <div class="rep-wrap">
     <pre id="repText" class="rep-text">${esc(r.text)}</pre>
     <div class="rep-actions">
-      <span class="rep-note"><i class="fas fa-circle-info"></i> Numbers of all your rooms combined, as shown now</span>
+      <span class="rep-note"><i class="fas fa-circle-info"></i> ${esc(note)}</span>
       <button type="button" id="repCopyBtn" class="rep-copy" onclick="copyShiftReport()"><i class="fas fa-copy"></i> Copy report</button>
     </div>
   </div>`);
