@@ -55,6 +55,7 @@ const K = {
   ss:      (s,d)  => 'ss_'+s+'_'+d,
   atlow:   d      => 'atlow_'+d,
   lane:    d      => 'lanecert_'+d,
+  report:  d      => 'report_'+d,
   range:   days   => 'atrange_'+days.join(',')
 };
 
