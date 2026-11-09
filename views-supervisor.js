@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-SUPERVISOR.JS  v4.2.0 — supervisor dashboard
+VIEWS-SUPERVISOR.JS  v4.3.0 — supervisor dashboard
 ================================================ */
 /* ================================================
 SUPERVISOR DASHBOARD
@@ -51,8 +51,9 @@ async function fetchSupervisorDashboard(full) {
 }
 
 function renderSupervisorDashboard(d) {
-  console.log('renderSupervisorDashboard called with:', d);
+  S._supData = d;                      /* the End-of-Shift report is built from the latest rendered data */
   const date = D.datePicker.value;
+  const reportScope = buildShiftReport(d).scope;
   const locations = d.locations || {};
   let html = `<div class="ss-wrap">`;
 
@@ -269,6 +270,17 @@ function renderSupervisorDashboard(d) {
         <div class="kpi-label">Lane Line Not Certified</div>
         <div class="kpi-val" id="laneCertCountSup_${locIdx}">—</div>
         <div class="kpi-sub" id="laneCertSubSup_${locIdx}">labelers</div>
+      </div>
+      <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
+    </div>`;
+
+    /* ── NEW v4.3.0: End of Shift report (all of this supervisor's rooms combined) ── */
+    html += `
+    <div class="kpi-card kpi-clickable kpi-report" onclick="openShiftReport()">
+      <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-file-lines"></i></div>
+      <div class="kpi-body">
+        <div class="kpi-label">Generate End of Shift Report</div>
+        <div class="kpi-sub">${esc(reportScope)} · combined</div>
       </div>
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
@@ -568,5 +580,108 @@ async function openSupervisorQcPanel(locName, date) {
     </div>`;
   } catch(e) {
     document.getElementById('centerModalContent').innerHTML = `<div class="qc-empty"><i class="fas fa-triangle-exclamation"></i><p>${e.message}</p></div>`;
+  }
+}
+
+/* ================================================
+END OF SHIFT REPORT  (v4.3.0)
+One report for ALL the rooms of the logged-in floor supervisor:
+  102 + 108 together · 106 = rooms 104 + 105 · Saint Fatima alone
+Total Production = Total Active Users   (sum)
+Submitted        = tasks submitted      (sum)
+Not Submitted    = Pending              (sum)
+LIDAR / Lane Line FP · QA = task counts (sum)
+================================================ */
+function shortRoomLabel(name) {
+  const s = String(name || '').trim();
+  const m = s.match(/^(?:nc\s*)?(?:unit|room)\s*(\d+)$/i);      /* "NC Unit 104" → "104" */
+  return m ? m[1] : s;
+}
+function joinAnd(list) {
+  if (list.length <= 1) return list[0] || '';
+  return list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
+}
+function buildShiftReport(d) {
+  const locs = (d && d.locations) || {};
+  let active = 0, pending = 0, tasks = 0, lfp = 0, lqa = 0, llfp = 0, llqa = 0, shiftWord = '';
+  const labels = [];
+  Object.keys(locs).forEach(name => {
+    const l = locs[name] || {}, att = l.attendance || {}, t = l.tasks || {};
+    active  += att.totalActive || 0;
+    pending += l.totalPending  || 0;
+    tasks   += t.total || 0;
+    lfp  += (t.LIDAR && t.LIDAR.FP) || 0;       lqa  += (t.LIDAR && t.LIDAR.QA) || 0;
+    llfp += (t.LaneLine && t.LaneLine.FP) || 0; llqa += (t.LaneLine && t.LaneLine.QA) || 0;
+    (l.reportRooms && l.reportRooms.length ? l.reportRooms : [name]).forEach(r => {
+      const s = shortRoomLabel(r);
+      if (s && labels.indexOf(s) === -1) labels.push(s);
+    });
+    if (!shiftWord) {
+      if (CONFIG.SHIFT_LABELS[l.shift]) shiftWord = CONFIG.SHIFT_LABELS[l.shift] + ' Shift';
+      else if (l.shift === 'All Shifts') shiftWord = 'All Shifts';
+    }
+  });
+  labels.sort((a, b) => {
+    const an = /^\d+$/.test(a), bn = /^\d+$/.test(b);
+    if (an && bn) return Number(a) - Number(b);
+    if (an !== bn) return an ? -1 : 1;
+    return a.localeCompare(b);
+  });
+  const allNum = labels.length > 0 && labels.every(l => /^\d+$/.test(l));
+  const scope = (allNum ? (labels.length > 1 ? 'Rooms ' : 'Room ') : '') + joinAnd(labels);
+  const title = 'Production Overview for ' + scope + (shiftWord ? ' \u2013 ' + shiftWord : '');
+  const p = (D.datePicker.value || '').split('-');
+  const dateTxt = p.length === 3 ? (Number(p[2]) + '/' + Number(p[1]) + '/' + p[0]) : (D.datePicker.value || '');
+  const text = [
+    title,
+    '',
+    'Date: ' + dateTxt,
+    'Total Production: ' + active,
+    'Submitted: ' + tasks,
+    'Not Submitted: ' + pending,
+    'LIDAR FP: ' + lfp,
+    'LIDAR QA: ' + lqa,
+    'Lane Line FP: ' + llfp,
+    'Lane Line QA: ' + llqa
+  ].join('\n');
+  return { title, scope, text };
+}
+function openShiftReport() {
+  const d = S._supData;
+  if (!d) return;
+  const r = buildShiftReport(d);
+  S._shiftReportText = r.text;
+  let now = '';
+  try { now = new Intl.DateTimeFormat('en-GB', { timeZone: CONFIG.TZ, hour: '2-digit', minute: '2-digit' }).format(new Date()); } catch (e) {}
+  openCenterModal('End of Shift Report', r.scope + (now ? ' · generated ' + now : ''), `
+  <div class="rep-wrap">
+    <pre id="repText" class="rep-text">${esc(r.text)}</pre>
+    <div class="rep-actions">
+      <span class="rep-note"><i class="fas fa-circle-info"></i> Numbers of all your rooms combined, as shown now</span>
+      <button type="button" id="repCopyBtn" class="rep-copy" onclick="copyShiftReport()"><i class="fas fa-copy"></i> Copy report</button>
+    </div>
+  </div>`);
+}
+async function copyShiftReport() {
+  const text = S._shiftReportText || '';
+  const btn = document.getElementById('repCopyBtn');
+  let ok = false;
+  try {
+    if (navigator.clipboard && window.isSecureContext !== false) { await navigator.clipboard.writeText(text); ok = true; }
+  } catch (e) {}
+  if (!ok) {                                   /* old browsers / blocked clipboard */
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+      document.body.appendChild(ta); ta.select();
+      ok = document.execCommand('copy');
+      ta.remove();
+    } catch (e) {}
+  }
+  if (btn) {
+    const old = btn.innerHTML;
+    btn.innerHTML = ok ? '<i class="fas fa-check"></i> Copied' : '<i class="fas fa-triangle-exclamation"></i> Select the text and copy';
+    btn.classList.toggle('done', ok);
+    setTimeout(() => { btn.innerHTML = old; btn.classList.remove('done'); }, 2200);
   }
 }
