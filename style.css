@@ -1,5 +1,5 @@
 /* ================================================
-STYLE.CSS  v4.1.0  —  Google + Apple Design System
+STYLE.CSS  v4.3.0  —  Google + Apple Design System
 Dark mode · Material You colours · SF Pro spacing
 (+ ATOT% cards, Below/Above 80%, Team AVE display)
 ================================================ */
@@ -1292,3 +1292,26 @@ ATOT% CARDS & DISPLAY (NEW v3.5)
   .atr-day-row{ grid-template-columns:78px 1fr 54px; }
   .atr-day-n{ display:none; }
 }
+
+/* ================================================
+   v4.3.0 — End of Shift report
+   ================================================ */
+.kpi-report{ border-color:var(--blue-br); background:linear-gradient(135deg,var(--blue-bg),transparent 70%); }
+.kpi-report:hover{ border-color:var(--blue); }
+.rep-wrap{ display:flex; flex-direction:column; gap:14px; }
+.rep-text{
+  margin:0; padding:18px 20px; border-radius:var(--r-lg);
+  background:var(--bg-3); border:1px solid var(--br-2); color:var(--t-1);
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:14px; line-height:1.85;
+  white-space:pre-wrap; word-break:break-word; user-select:all;
+}
+.rep-actions{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.rep-note{ font-size:12px; color:var(--t-3); }
+.rep-note i{ margin-right:6px; }
+.rep-copy{
+  display:inline-flex; align-items:center; gap:8px; padding:11px 22px; border-radius:var(--r-md); border:none; cursor:pointer;
+  font-size:14px; font-weight:700; font-family:inherit; color:#06121f;
+  background:linear-gradient(135deg,var(--blue),var(--green)); transition:transform .15s, opacity .15s;
+}
+.rep-copy:hover{ transform:translateY(-1px); }
+.rep-copy.done{ background:var(--green); }
