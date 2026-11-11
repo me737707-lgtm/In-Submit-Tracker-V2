@@ -1,5 +1,5 @@
 /* ================================================
-PANELS.JS  v4.0.0 — breakdown panels & modals
+PANELS.JS  v4.7.0 — breakdown panels & modals
 ================================================ */
 /* ================================================
 BREAKDOWN PANEL
@@ -57,7 +57,7 @@ function openPendingPanel(roomBreakdown, totalPending, pendingByTeam, pendingUse
     return `
     <div class="br-row room-detail-row">
       <div class="room-detail-main">
-        <span class="br-label"><i class="fas fa-door-open"></i>${room}</span>
+        <span class="br-label"><i class="fas fa-door-open"></i>${esc(room)}</span>
         <span class="br-pill pill-red">${r.pending || 0} pending</span>
       </div>
       <div class="room-detail-stats">
@@ -89,19 +89,19 @@ function openPendingPanel(roomBreakdown, totalPending, pendingByTeam, pendingUse
   let userRows = '';
   if (pendingUsers && pendingUsers.length > 0) {
     userRows = pendingUsers.map((u, i) => `
-    <div class="br-row" style="animation-delay:${i * 30}ms">
-      <div style="display:flex;align-items:center;gap:12px;flex:1;">
-        <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--red),var(--yellow));display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;">${u.email[0].toUpperCase()}</div>
-        <div>
-          <div style="font-size:13px;font-weight:600;color:var(--t-1);">${esc(u.email)}</div>
-          <div style="font-size:11px;color:var(--t-4);display:flex;align-items:center;gap:6px;margin-top:2px;">
-            <i class="fas fa-desktop" style="font-size:10px;"></i>${esc(u.pc || 'N/A')}
-            <span style="color:var(--br-2)">|</span>
-            <i class="fas fa-user-tie" style="font-size:10px;"></i>${esc(u.team || 'Unknown')}
+    <div class="br-row" style="animation-delay:${Math.min(i, 20) * 15}ms">
+      <div class="br-user-main">
+        <div class="br-user-avatar pend">${esc((u.email || '?')[0].toUpperCase())}</div>
+        <div class="br-user-info">
+          <div class="br-user-email">${esc(u.email)}</div>
+          <div class="br-user-sub">
+            <span><i class="fas fa-desktop"></i> ${esc(u.pc || 'N/A')}</span>
+            <span class="br-user-sep">·</span>
+            <span><i class="fas fa-user-tie"></i> ${esc(u.team || 'Unknown')}</span>
           </div>
         </div>
       </div>
-      <span class="br-pill pill-red"><i class="fas fa-hourglass"></i> Pending</span>
+      <span class="br-pill pill-red"><i class="fas fa-hourglass-half"></i> Pending</span>
     </div>
     `).join('');
   }
@@ -191,7 +191,7 @@ async function openQcShiftPanel(label, shift, date) {
       return `
       <div class="qc-card">
         <div class="qc-card-header">
-          <div class="qc-avatar">${qc[0].toUpperCase()}</div>
+          <div class="qc-avatar">${esc(qc[0].toUpperCase())}</div>
           <div class="qc-info">
             <div class="qc-name">${esc(qc)}</div>
             <div class="qc-meta">${q.total} tasks • ${q.uniqueUsers} labelers</div>
@@ -217,7 +217,7 @@ async function openQcShiftPanel(label, shift, date) {
         </div>
         ${Object.keys(q.other || {}).length ? `
         <div class="qc-other">
-          ${Object.entries(q.other).map(([k,v]) => `<span class="qc-other-badge">${k}: ${v}</span>`).join('')}
+          ${Object.entries(q.other).map(([k,v]) => `<span class="qc-other-badge">${esc(k)}: ${v}</span>`).join('')}
         </div>` : ''}
       </div>`;
     }).join('');
@@ -253,7 +253,7 @@ async function openQcShiftPanel(label, shift, date) {
       ${qcCards}
     </div>`;
   } catch(e) {
-    content.innerHTML = `<div class="qc-empty"><i class="fas fa-triangle-exclamation"></i><p>${e.message}</p></div>`;
+    content.innerHTML = `<div class="qc-empty"><i class="fas fa-triangle-exclamation"></i><p>${esc(e.message)}</p></div>`;
   }
 }
 
@@ -276,11 +276,11 @@ function openUserTypePanel(title, sub, roomUserBreakdown, modality, pass) {
     return `
     <div class="br-row room-detail-row">
       <div class="room-detail-main">
-        <span class="br-label"><i class="fas fa-door-open"></i>${room}</span>
+        <span class="br-label"><i class="fas fa-door-open"></i>${esc(room)}</span>
         <span class="br-pill pill-blue">${count} labelers</span>
       </div>
       <div class="room-detail-stats">
-        <span class="br-pill pill-green"><i class="fas fa-cube"></i>LIDAR FP: ${r.LIDAR?.FP || 0}</span>
+        <span class="br-pill pill-blue"><i class="fas fa-cube"></i>LIDAR FP: ${r.LIDAR?.FP || 0}</span>
         <span class="br-pill pill-green"><i class="fas fa-cube"></i>LIDAR QA: ${r.LIDAR?.QA || 0}</span>
         <span class="br-pill pill-purple"><i class="fas fa-road"></i>LaneLine FP: ${r.LaneLine?.FP || 0}</span>
         <span class="br-pill pill-yellow"><i class="fas fa-road"></i>LaneLine QA: ${r.LaneLine?.QA || 0}</span>
@@ -299,7 +299,7 @@ function openUserTypePanel(title, sub, roomUserBreakdown, modality, pass) {
   const html = `
   <div class="br-summary-card">
     <div class="br-summary-row">
-      <span class="brs-label">Total ${title} Labelers</span>
+      <span class="brs-label">Total ${esc(title)} Labelers</span>
       <span class="brs-val">${totalCount}</span>
     </div>
   </div>
@@ -320,7 +320,7 @@ async function openSupervisorPanel(locName) {
     const t = loc.tasks||{};
     const teamRows = Object.entries(loc.teams||{}).map(([tn,tm])=>`
     <div class="br-row">
-      <span class="br-label"><i class="fas fa-user-tie"></i>${tn}</span>
+      <span class="br-label"><i class="fas fa-user-tie"></i>${esc(tn)}</span>
       <span class="br-pill pill-green">${tm.submitted} done</span>
       <span class="br-pill pill-red">${tm.pending} pending</span>
     </div>`).join('');
@@ -355,13 +355,13 @@ async function openSupervisorPanel(locName) {
     </div>
     ${Object.keys(t.other||{}).length?`
     <div class="br-section" style="margin-top:16px">Other Tasks</div>
-    ${Object.entries(t.other).map(([k,v])=>`<div class="br-row"><span class="br-label">${k}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('')}
+    ${Object.entries(t.other).map(([k,v])=>`<div class="br-row"><span class="br-label">${esc(k)}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('')}
     `:''}`;
     const content = document.getElementById('centerModalContent');
     if (content) content.innerHTML = html;
   } catch(e) {
     const content = document.getElementById('centerModalContent');
-    if (content) content.innerHTML = `<div class="err-simple">${e.message}</div>`;
+    if (content) content.innerHTML = `<div class="err-simple">${esc(e.message)}</div>`;
   }
 }
 
@@ -373,7 +373,7 @@ async function openRoomPanel(roomName) {
     if (!d.success) throw new Error(d.error);
     const teamRows = Object.entries(d.teams||{}).map(([tn,tm])=>`
     <div class="br-row">
-      <span class="br-label"><i class="fas fa-user-tie"></i>${tn}</span>
+      <span class="br-label"><i class="fas fa-user-tie"></i>${esc(tn)}</span>
       <span class="br-pill pill-blue">${tm.total} total</span>
       <span class="br-pill pill-green">${(tm.LIDAR?.FP||0)+(tm.LaneLine?.FP||0)} FP</span>
       <span class="br-pill pill-yellow">${(tm.LIDAR?.QA||0)+(tm.LaneLine?.QA||0)} QA</span>
@@ -411,7 +411,7 @@ async function openRoomPanel(roomName) {
     </div>
     ${Object.keys(d.other||{}).length?`
     <div class="br-section" style="margin-top:16px">Other Tasks</div>
-    ${Object.entries(d.other).map(([k,v])=>`<div class="br-row"><span class="br-label">${k}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('')}
+    ${Object.entries(d.other).map(([k,v])=>`<div class="br-row"><span class="br-label">${esc(k)}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('')}
     `:''}
     <div class="br-section" style="margin-top:20px">Team Breakdown</div>
     ${teamRows||'<p class="br-empty">No team data.</p>'}`;
@@ -419,7 +419,7 @@ async function openRoomPanel(roomName) {
     if (content) content.innerHTML = html;
   } catch(e) {
     const content = document.getElementById('centerModalContent');
-    if (content) content.innerHTML = `<div class="err-simple">${e.message}</div>`;
+    if (content) content.innerHTML = `<div class="err-simple">${esc(e.message)}</div>`;
   }
 }
 
@@ -455,12 +455,12 @@ async function openQcPanel(qtcName) {
     </div>
     ${Object.keys(d.other||{}).length?`
     <div class="br-section" style="margin-top:16px">Other</div>
-    ${Object.entries(d.other).map(([k,v])=>`<div class="br-row"><span class="br-label">${k}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('')}
+    ${Object.entries(d.other).map(([k,v])=>`<div class="br-row"><span class="br-label">${esc(k)}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('')}
     `:''}`;
     const content = document.getElementById('centerModalContent');
     if (content) content.innerHTML = html;
   } catch(e) {
     const content = document.getElementById('centerModalContent');
-    if (content) content.innerHTML = `<div class="err-simple">${e.message}</div>`;
+    if (content) content.innerHTML = `<div class="err-simple">${esc(e.message)}</div>`;
   }
 }
