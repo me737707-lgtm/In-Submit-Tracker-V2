@@ -1,5 +1,5 @@
 /* ================================================
-LANECERT.JS  v4.2.0 — Lane Line certification
+LANECERT.JS  v4.7.0 — Lane Line certification
 ================================================ */
 /* ================================================
 LANE LINE CERTIFICATION (v3.8.0 — Shift Sup sees Not Certified rows)
@@ -67,9 +67,9 @@ function certUserRow(e, i) {
     : '<span class="br-pill pill-blue"><i class="fas fa-road"></i> FP</span>').join('');
 
   return `
-  <div class="br-row lane-user-row" style="animation-delay:${i * 15}ms">
+  <div class="br-row lane-user-row" style="animation-delay:${Math.min(i, 20) * 15}ms">
     <div class="lane-user-id">
-      <div class="lane-avatar">${(e.email||'?')[0].toUpperCase()}</div>
+      <div class="lane-avatar">${esc((e.email||'?')[0].toUpperCase())}</div>
       <div class="lane-user-meta">
         <div class="lane-user-email">${esc(e.email)}</div>
         <div class="lane-user-sub">
@@ -95,9 +95,9 @@ function regNotWorkingRow(r, i) {
       : '<span class="br-pill pill-gray"><i class="fas fa-circle-xmark"></i> Not in List</span>';
 
   return `
-  <div class="br-row lane-user-row" style="animation-delay:${i * 15}ms">
+  <div class="br-row lane-user-row" style="animation-delay:${Math.min(i, 20) * 15}ms">
     <div class="lane-user-id">
-      <div class="lane-avatar" style="background:linear-gradient(135deg,var(--gray),var(--t-4));color:#0d1117;box-shadow:none;">${(r.email||'?')[0].toUpperCase()}</div>
+      <div class="lane-avatar idle">${esc((r.email||'?')[0].toUpperCase())}</div>
       <div class="lane-user-meta">
         <div class="lane-user-email">${esc(r.email)}</div>
         <div class="lane-user-sub">
@@ -142,7 +142,7 @@ function buildRoomCertRows(users, registered) {
     const working = m.workingSet.size;
     const reg = m.regFP + m.regQA;
     return `
-    <div class="br-row room-detail-row" style="animation-delay:${i * 20}ms">
+    <div class="br-row room-detail-row" style="animation-delay:${Math.min(i, 20) * 15}ms">
       <div class="room-detail-main">
         <span class="br-label"><i class="fas fa-door-open"></i>${esc(m.room)}</span>
         <span class="br-pill pill-cyan"><i class="fas fa-certificate"></i>${reg} registered</span>
@@ -251,6 +251,6 @@ async function openLaneLineCertPanel(locFilter) {
 
     content.innerHTML = html;
   } catch(e) {
-    document.getElementById('centerModalContent').innerHTML = `<div class="qc-empty"><i class="fas fa-triangle-exclamation"></i><p>${e.message}</p></div>`;
+    document.getElementById('centerModalContent').innerHTML = `<div class="qc-empty"><i class="fas fa-triangle-exclamation"></i><p>${esc(e.message)}</p></div>`;
   }
 }
