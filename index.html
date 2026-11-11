@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Submit Tracker</title>
+  <title>Submit Tracker — Operations Intelligence</title>
   <link rel="preconnect" href="https://script.google.com">
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"></noscript>
-  <link rel="stylesheet" href="style.css?v=4.6.0">
+  <link rel="stylesheet" href="style.css?v=4.7.0">
   <base target="_self">
 </head>
 <body>
@@ -19,31 +19,34 @@
 <!-- LOGIN -->
 <div id="loginOverlay" class="login-overlay">
   <div class="login-card">
-    <div class="login-logo"><i class="fas fa-chart-line"></i></div>
+    <div class="login-logo"><i class="fas fa-layer-group"></i></div>
     <h1 class="login-title">Submit Tracker</h1>
-    <p class="login-sub">Live Operations Dashboard</p>
+    <p class="login-sub">Operations &amp; Workforce Intelligence</p>
     <form id="loginForm" onsubmit="handleLogin(event)">
       <div class="field-group">
-        <label class="field-label">Username</label>
-        <div class="field-wrap"><i class="fas fa-user field-icon"></i>
-          <input type="text" id="username" class="field-input" placeholder="Enter username" required autocomplete="username">
+        <label class="field-label" for="username">Username</label>
+        <div class="field-wrap">
+          <i class="fas fa-user field-icon"></i>
+          <input type="text" id="username" class="field-input" placeholder="Enter your username" required autocomplete="username">
         </div>
       </div>
       <div class="field-group">
-        <label class="field-label">Password</label>
-        <div class="field-wrap"><i class="fas fa-lock field-icon"></i>
-          <input type="password" id="password" class="field-input" placeholder="Enter password" required autocomplete="current-password">
+        <label class="field-label" for="password">Password</label>
+        <div class="field-wrap">
+          <i class="fas fa-lock field-icon"></i>
+          <input type="password" id="password" class="field-input" placeholder="Enter your password" required autocomplete="current-password">
         </div>
       </div>
       <div id="loginError" class="login-error" style="display:none">
-        <i class="fas fa-exclamation-circle"></i><span id="loginErrorMsg">Invalid credentials</span>
+        <i class="fas fa-circle-exclamation"></i><span id="loginErrorMsg">Invalid credentials</span>
       </div>
       <button type="submit" id="loginBtn" class="login-btn">
-        <i class="fas fa-arrow-right-to-bracket"></i> Sign In
+        <span>Sign In to Workspace</span>
+        <i class="fas fa-arrow-right"></i>
       </button>
     </form>
     <div id="loginSpinner" class="login-spinner" style="display:none">
-      <div class="spin-ring"></div><span>Authenticating…</span>
+      <div class="spin-ring"></div><span>Authenticating session…</span>
     </div>
   </div>
 </div>
@@ -56,7 +59,7 @@
       <p id="panelSub" class="panel-sub"></p>
       <h2 id="panelTitle" class="panel-title">Breakdown</h2>
     </div>
-    <button class="panel-close-btn" onclick="closePanel()"><i class="fas fa-xmark"></i></button>
+    <button class="panel-close-btn" onclick="closePanel()" title="Close (Esc)"><i class="fas fa-xmark"></i></button>
   </div>
   <div id="panelContent" class="panel-content">
     <div class="panel-spin"><div class="spin-ring"></div></div>
@@ -69,11 +72,12 @@
   <!-- HEADER -->
   <header id="appHeader" class="app-header">
     <div class="header-brand">
-      <div class="brand-mark"><i class="fas fa-chart-line"></i></div>
-      <div>
+      <div class="brand-mark"><i class="fas fa-layer-group"></i></div>
+      <div class="brand-text">
         <div class="brand-name">Submit Tracker</div>
-        <div class="brand-tag">Live Operations</div>
+        <div class="brand-tag">METI Floor Ops</div>
       </div>
+      <div class="header-divider"></div>
       <div id="statusPill" class="status-pill loading">
         <span class="status-dot"></span><span id="statusLabel">Connecting</span>
       </div>
@@ -81,7 +85,8 @@
     <div class="header-controls">
       <div class="search-box">
         <i class="fas fa-magnifying-glass"></i>
-        <input id="searchInput" type="text" placeholder="Search email or PC…" oninput="handleSearch()">
+        <input id="searchInput" type="text" placeholder="Filter by email or PC…" oninput="handleSearch()">
+        <kbd class="search-kbd" title="Press Ctrl+K / ⌘K to focus">⌘K</kbd>
       </div>
       <select id="shiftFilter" class="ctrl-select" onchange="renderDashboard()">
         <option value="all">All Shifts</option>
@@ -99,7 +104,7 @@
           <span id="userNameLabel" class="user-name"></span>
           <span id="userRoleLabel" class="user-role-badge"></span>
         </div>
-        <button class="logout-btn" onclick="handleLogout()" title="Logout">
+        <button class="logout-btn" onclick="handleLogout()" title="Sign out">
           <i class="fas fa-arrow-right-from-bracket"></i>
         </button>
       </div>
@@ -118,17 +123,17 @@
 </div>
 
 <!-- Toast -->
-<div id="toast" class="toast"><i class="fas fa-rotate"></i> Updated</div>
+<div id="toast" class="toast"><i class="fas fa-arrows-rotate"></i> Updated</div>
 
 <!-- order matters: config → core → views → panels → atot → lanecert → export -->
-<script defer src="config.js?v=4.6.0"></script>
-<script defer src="core.js?v=4.6.0"></script>
-<script defer src="views-main.js?v=4.6.0"></script>
-<script defer src="views-supervisor.js?v=4.6.0"></script>
-<script defer src="views-shift.js?v=4.6.0"></script>
-<script defer src="panels.js?v=4.6.0"></script>
-<script defer src="atot.js?v=4.6.0"></script>
-<script defer src="lanecert.js?v=4.6.0"></script>
-<script defer src="export.js?v=4.6.0"></script>
+<script defer src="config.js?v=4.7.0"></script>
+<script defer src="core.js?v=4.7.0"></script>
+<script defer src="views-main.js?v=4.7.0"></script>
+<script defer src="views-supervisor.js?v=4.7.0"></script>
+<script defer src="views-shift.js?v=4.7.0"></script>
+<script defer src="panels.js?v=4.7.0"></script>
+<script defer src="atot.js?v=4.7.0"></script>
+<script defer src="lanecert.js?v=4.7.0"></script>
+<script defer src="export.js?v=4.7.0"></script>
 </body>
 </html>
