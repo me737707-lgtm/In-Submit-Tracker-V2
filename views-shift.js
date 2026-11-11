@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-SHIFT.JS  v4.2.0 — shift supervisor view
+VIEWS-SHIFT.JS  v4.6.0 — shift supervisor view (+ End of Shift report)
 ================================================ */
 /* ================================================
 SHIFT SUPERVISOR VIEW
@@ -57,6 +57,7 @@ async function fetchShiftSupervisor(full) {
 
 function renderSSView(d) {
   console.log('renderSSView called with:', d);
+  S._ssData        = d;                      /* saved for the Shift Supervisor End-of-Shift report */
   const shift      = d.shift;
   const label      = CONFIG.SHIFT_LABELS[shift]||shift;
   const att        = d.attendance || {};
@@ -299,6 +300,16 @@ function renderSSView(d) {
           <div class="kpi-label">Lane Line Not Certified</div>
           <div class="kpi-val" id="laneCertCountSS">—</div>
           <div class="kpi-sub" id="laneCertSubSS">labelers</div>
+        </div>
+        <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
+      </div>
+
+      <!-- NEW v4.6.0: End of Shift report (whole shift overview) -->
+      <div class="kpi-card kpi-clickable kpi-report" onclick="openShiftReport()">
+        <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-file-lines"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Generate End of Shift Report</div>
+          <div class="kpi-sub">${esc(label)} Shift · all rooms</div>
         </div>
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
