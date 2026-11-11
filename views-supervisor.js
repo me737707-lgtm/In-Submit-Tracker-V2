@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-SUPERVISOR.JS  v4.6.0 — supervisor dashboard + End of Shift report (Floor & Shift Supervisor)
+VIEWS-SUPERVISOR.JS  v4.7.0 — supervisor dashboard + End of Shift report (Floor & Shift Supervisor)
 ================================================ */
 /* ================================================
 SUPERVISOR DASHBOARD
@@ -45,7 +45,7 @@ async function fetchSupervisorDashboard(full) {
     setStatus('live');
   } catch(e) {
     console.error('❌ Supervisor dashboard error:', e);
-    D.supervisorView.innerHTML = `<div class="err-simple"><i class="fas fa-triangle-exclamation"></i> ${e.message}</div>`;
+    D.supervisorView.innerHTML = `<div class="err-simple"><i class="fas fa-triangle-exclamation"></i> ${esc(e.message)}</div>`;
     setStatus('error');
   }
 }
@@ -81,10 +81,10 @@ function renderSupervisorDashboard(d) {
     const t = loc.tasks || {};
     const u = loc.overallUserBreakdown || {LIDAR:{FP:0,QA:0},LaneLine:{FP:0,QA:0}};
 
-    html += `<div class="loc-section" style="margin-bottom:32px;animation-delay:${locIdx * 100}ms">`;
+    html += `<div class="loc-section" style="margin-bottom:24px;animation-delay:${locIdx * 60}ms">`;
 
     html += `
-    <div class="loc-header" style="margin-bottom:20px;">
+    <div class="loc-header">
       <div class="loc-icon-wrap"><i class="fas fa-building"></i></div>
       <div class="loc-title-wrap">
         <h2 class="loc-name">${esc(locName)}</h2>
@@ -357,7 +357,7 @@ function buildTaskRows(t) {
   <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${t.LaneLine?.QA||0} tasks</span></div>`;
   if (Object.keys(t.other||{}).length) {
     html += `<div class="br-section" style="margin-top:12px">Other</div>` +
-      Object.entries(t.other||{}).map(([k,v])=>`<div class="br-row"><span class="br-label">${k}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('');
+      Object.entries(t.other||{}).map(([k,v])=>`<div class="br-row"><span class="br-label">${esc(k)}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('');
   }
   return html;
 }
@@ -368,13 +368,13 @@ function buildRoomRows(rooms) {
     return `
     <div class="br-row room-detail-row">
       <div class="room-detail-main">
-        <span class="br-label"><i class="fas fa-door-open"></i>${room}</span>
+        <span class="br-label"><i class="fas fa-door-open"></i>${esc(room)}</span>
         <span class="br-pill pill-blue">${r.total} total</span>
       </div>
       <div class="room-detail-stats">
         <span class="br-pill pill-green"><i class="fas fa-user-check"></i>${r.active||0} active</span>
         <span class="br-pill pill-green"><i class="fas fa-check"></i>${r.submitted||0} done</span>
-        <span class="br-pill pill-red"><i class="fas fa-hourglass"></i>${r.pending||0} pending</span>
+        <span class="br-pill pill-red"><i class="fas fa-hourglass-half"></i>${r.pending||0} pending</span>
         ${r.absent>0?`<span class="br-pill pill-gray"><i class="fas fa-user-xmark"></i>${r.absent} absent</span>`:''}
         ${r.empty>0?`<span class="br-pill pill-gray"><i class="fas fa-user-slash"></i>${r.empty} empty</span>`:''}
         ${r.training>0?`<span class="br-pill pill-yellow"><i class="fas fa-graduation-cap"></i>${r.training} training</span>`:''}
@@ -386,15 +386,15 @@ function buildRoomRows(rooms) {
 
 function openSubmittedUsersPanel(locName, submittedUsers, totalTasks, totalLabelers) {
   const userRows = submittedUsers.map((u, i) => `
-  <div class="br-row" style="animation-delay:${i * 30}ms">
-    <div style="display:flex;align-items:center;gap:12px;flex:1;">
-      <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--blue),var(--green));display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;">${u.email[0].toUpperCase()}</div>
-      <div>
-        <div style="font-size:13px;font-weight:600;color:var(--t-1);">${esc(u.email)}</div>
-        <div style="font-size:11px;color:var(--t-4);display:flex;align-items:center;gap:6px;margin-top:2px;">
-          <i class="fas fa-desktop" style="font-size:10px;"></i>${esc(u.pc || 'N/A')}
-          <span style="color:var(--br-2)">|</span>
-          <i class="fas fa-user-tie" style="font-size:10px;"></i>${esc(u.team)}
+  <div class="br-row" style="animation-delay:${Math.min(i, 20) * 15}ms">
+    <div class="br-user-main">
+      <div class="br-user-avatar done">${esc((u.email || '?')[0].toUpperCase())}</div>
+      <div class="br-user-info">
+        <div class="br-user-email">${esc(u.email)}</div>
+        <div class="br-user-sub">
+          <span><i class="fas fa-desktop"></i> ${esc(u.pc || 'N/A')}</span>
+          <span class="br-user-sep">·</span>
+          <span><i class="fas fa-user-tie"></i> ${esc(u.team)}</span>
         </div>
       </div>
     </div>
@@ -425,17 +425,17 @@ function openSubmittedUsersPanel(locName, submittedUsers, totalTasks, totalLabel
 
 function openPendingUsersPanel(locName, pendingUsers) {
   const userRows = pendingUsers.map((u, i) => `
-  <div class="br-row" style="animation-delay:${i * 30}ms">
-    <div style="display:flex;align-items:center;gap:12px;flex:1;">
-      <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--red),var(--yellow));display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;">${u.email[0].toUpperCase()}</div>
-      <div>
-        <div style="font-size:13px;font-weight:600;color:var(--t-1);">${esc(u.email)}</div>
-        <div style="font-size:11px;color:var(--t-4);display:flex;align-items:center;gap:6px;margin-top:2px;">
-          <i class="fas fa-clock" style="font-size:10px;"></i>Pending submission
+  <div class="br-row" style="animation-delay:${Math.min(i, 20) * 15}ms">
+    <div class="br-user-main">
+      <div class="br-user-avatar pend">${esc((u.email || '?')[0].toUpperCase())}</div>
+      <div class="br-user-info">
+        <div class="br-user-email">${esc(u.email)}</div>
+        <div class="br-user-sub">
+          <span><i class="fas fa-clock"></i> Pending submission</span>
         </div>
       </div>
     </div>
-    <span class="br-pill pill-red"><i class="fas fa-hourglass"></i> Pending</span>
+    <span class="br-pill pill-red"><i class="fas fa-hourglass-half"></i> Pending</span>
   </div>
   `).join('');
 
@@ -459,15 +459,15 @@ function openActiveUsersPanel(locName, submittedUsers, pendingUsers) {
   ];
 
   const userRows = allActive.map((u, i) => `
-  <div class="br-row" style="animation-delay:${i * 30}ms">
-    <div style="display:flex;align-items:center;gap:12px;flex:1;">
-      <div style="width:32px;height:32px;border-radius:8px;background:${u.status === 'submitted' ? 'linear-gradient(135deg,var(--blue),var(--green))' : 'linear-gradient(135deg,var(--red),var(--yellow))'};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;">${u.email[0].toUpperCase()}</div>
-      <div>
-        <div style="font-size:13px;font-weight:600;color:var(--t-1);">${esc(u.email)}</div>
-        ${u.team && u.team !== 'N/A' ? `<div style="font-size:11px;color:var(--t-4);display:flex;align-items:center;gap:6px;margin-top:2px;"><i class="fas fa-user-tie" style="font-size:10px;"></i>${esc(u.team)}</div>` : ''}
+  <div class="br-row" style="animation-delay:${Math.min(i, 20) * 15}ms">
+    <div class="br-user-main">
+      <div class="br-user-avatar ${u.status === 'submitted' ? 'done' : 'pend'}">${esc((u.email || '?')[0].toUpperCase())}</div>
+      <div class="br-user-info">
+        <div class="br-user-email">${esc(u.email)}</div>
+        ${u.team && u.team !== 'N/A' ? `<div class="br-user-sub"><span><i class="fas fa-user-tie"></i> ${esc(u.team)}</span></div>` : ''}
       </div>
     </div>
-    <span class="br-pill ${u.status === 'submitted' ? 'pill-green' : 'pill-red'}"><i class="fas fa-${u.status === 'submitted' ? 'check' : 'hourglass'}"></i> ${u.status === 'submitted' ? 'Submitted' : 'Pending'}</span>
+    <span class="br-pill ${u.status === 'submitted' ? 'pill-green' : 'pill-red'}"><i class="fas fa-${u.status === 'submitted' ? 'check' : 'hourglass-half'}"></i> ${u.status === 'submitted' ? 'Submitted' : 'Pending'}</span>
   </div>
   `).join('');
 
@@ -521,7 +521,7 @@ async function openSupervisorQcPanel(locName, date) {
       return `
       <div class="qc-card">
         <div class="qc-card-header">
-          <div class="qc-avatar">${qc[0].toUpperCase()}</div>
+          <div class="qc-avatar">${esc(qc[0].toUpperCase())}</div>
           <div class="qc-info">
             <div class="qc-name">${esc(qc)}</div>
             <div class="qc-meta">${q.total} tasks</div>
@@ -547,7 +547,7 @@ async function openSupervisorQcPanel(locName, date) {
         </div>
         ${Object.keys(q.other || {}).length ? `
         <div class="qc-other">
-          ${Object.entries(q.other).map(([k,v]) => `<span class="qc-other-badge">${k}: ${v}</span>`).join('')}
+          ${Object.entries(q.other).map(([k,v]) => `<span class="qc-other-badge">${esc(k)}: ${v}</span>`).join('')}
         </div>` : ''}
       </div>`;
     }).join('');
@@ -579,7 +579,7 @@ async function openSupervisorQcPanel(locName, date) {
       ${qcCards}
     </div>`;
   } catch(e) {
-    document.getElementById('centerModalContent').innerHTML = `<div class="qc-empty"><i class="fas fa-triangle-exclamation"></i><p>${e.message}</p></div>`;
+    document.getElementById('centerModalContent').innerHTML = `<div class="qc-empty"><i class="fas fa-triangle-exclamation"></i><p>${esc(e.message)}</p></div>`;
   }
 }
 
