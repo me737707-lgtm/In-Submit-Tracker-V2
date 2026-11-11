@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-SUPERVISOR.JS  v4.4.0 — supervisor dashboard
+VIEWS-SUPERVISOR.JS  v4.6.0 — supervisor dashboard + End of Shift report (Floor & Shift Supervisor)
 ================================================ */
 /* ================================================
 SUPERVISOR DASHBOARD
@@ -584,9 +584,9 @@ async function openSupervisorQcPanel(locName, date) {
 }
 
 /* ================================================
-END OF SHIFT REPORT  (v4.3.0)
-One report for ALL the rooms of the logged-in floor supervisor:
-  102 + 108 together · 106 = rooms 104 + 105 · Saint Fatima alone
+END OF SHIFT REPORT  (v4.3.0 / v4.6.0)
+- Floor Supervisor: one report for ALL his rooms (102 + 108 together · 106 = 104 + 105 · Saint Fatima alone)
+- Shift Supervisor (v4.6.0): one report for the WHOLE shift across the sheet
 Total Production = Total Active Users   (sum)
 Submitted        = tasks submitted      (sum)
 Not Submitted    = Pending              (sum)
@@ -613,8 +613,38 @@ function reportLabels(names) {
   const allNum = labels.length > 0 && labels.every(l => /^\d+$/.test(l));
   return (allNum ? (labels.length > 1 ? 'Rooms ' : 'Room ') : '') + joinAnd(labels);
 }
-/* d = answer of "shiftReport" (all the rooms of the same person)  — or the dashboard answer as a fallback */
+/* d = answer of "shiftReport", "supervisorDashboard", or "shiftSupervisor" */
 function buildShiftReport(d) {
+  const p = (D.datePicker.value || '').split('-');
+  const dateTxt = p.length === 3 ? (Number(p[2]) + '/' + Number(p[1]) + '/' + p[0]) : (D.datePicker.value || '');
+
+  /* Case 1: Shift Supervisor (whole shift report) */
+  if (d && (d.isShiftReport || (!d.locations && d.shift))) {
+    const att = d.attendance || {}, t = d.tasks || {};
+    const active  = att.totalActive || d.totalUsers || 0;
+    const pending = d.totalPending  || 0;
+    const tasks   = t.total || 0;
+    const lfp  = (t.LIDAR && t.LIDAR.FP) || 0,       lqa  = (t.LIDAR && t.LIDAR.QA) || 0;
+    const llfp = (t.LaneLine && t.LaneLine.FP) || 0, llqa = (t.LaneLine && t.LaneLine.QA) || 0;
+    const shiftLabel = CONFIG.SHIFT_LABELS[d.shift] || d.shift || '';
+    const scope = shiftLabel ? (shiftLabel + ' Shift') : 'All Rooms';
+    const title = 'Production Overview for ' + scope;
+    const text = [
+      title,
+      '',
+      'Date: ' + dateTxt,
+      'Total Production: ' + active,
+      'Submitted: ' + tasks,
+      'Not Submitted: ' + pending,
+      'LIDAR FP: ' + lfp,
+      'LIDAR QA: ' + lqa,
+      'Lane Line FP: ' + llfp,
+      'Lane Line QA: ' + llqa
+    ].join('\n');
+    return { title, scope, text };
+  }
+
+  /* Case 2: Floor Supervisor (locations report) */
   const locs = (d && d.locations) || {};
   let active = 0, pending = 0, tasks = 0, lfp = 0, lqa = 0, llfp = 0, llqa = 0, shiftWord = '';
   const names = [];
@@ -634,8 +664,6 @@ function buildShiftReport(d) {
   const scopeNames = (d && (d.scopeRooms || d.reportScope)) || names;      /* server list wins: it includes rooms of the same person */
   const scope = reportLabels(scopeNames);
   const title = 'Production Overview for ' + scope + (shiftWord ? ' \u2013 ' + shiftWord : '');
-  const p = (D.datePicker.value || '').split('-');
-  const dateTxt = p.length === 3 ? (Number(p[2]) + '/' + Number(p[1]) + '/' + p[0]) : (D.datePicker.value || '');
   const text = [
     title,
     '',
@@ -651,6 +679,25 @@ function buildShiftReport(d) {
   return { title, scope, text };
 }
 async function openShiftReport() {
+  const isSS = (typeof userKind === 'function' && userKind() === 'ss');
+  if (isSS) {
+    if (!S._ssData) return;
+    const r = buildShiftReport(S._ssData);
+    S._shiftReportText = r.text;
+    let now = '';
+    try { now = new Intl.DateTimeFormat('en-GB', { timeZone: CONFIG.TZ, hour: '2-digit', minute: '2-digit' }).format(new Date()); } catch (e) {}
+    const note = 'Numbers of the entire shift across all rooms, as shown now';
+    openCenterModal('End of Shift Report', r.scope + (now ? ' · generated ' + now : ''), `
+    <div class="rep-wrap">
+      <pre id="repText" class="rep-text">${esc(r.text)}</pre>
+      <div class="rep-actions">
+        <span class="rep-note"><i class="fas fa-circle-info"></i> ${esc(note)}</span>
+        <button type="button" id="repCopyBtn" class="rep-copy" onclick="copyShiftReport()"><i class="fas fa-copy"></i> Copy report</button>
+      </div>
+    </div>`);
+    return;
+  }
+
   if (!S._supData) return;
   const date = fmtDate(D.datePicker.value);
   openCenterModal('End of Shift Report', 'Collecting the numbers of all your rooms…', null);   /* spinner */
