@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-SUPERVISOR.JS  v4.9.0 — supervisor dashboard + End of Shift report (Smart Night Shift Date)
+VIEWS-SUPERVISOR.JS  v4.9.1 — supervisor dashboard + End of Shift report
 ================================================ */
 /* ================================================
 SUPERVISOR DASHBOARD
@@ -580,7 +580,7 @@ async function openSupervisorQcPanel(locName, date) {
 }
 
 /* ================================================
-END OF SHIFT REPORT (Smart Night Shift Date Integration)
+END OF SHIFT REPORT
 ================================================ */
 function shortRoomLabel(name) {
   const s = String(name || '').trim();
@@ -724,7 +724,7 @@ async function copyShiftReport() {
   if (!ok) {
     try {
       const ta = document.createElement('textarea');
-      ta.value = text; ta.setAttribute('readonly', '',); ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+      ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
       document.body.appendChild(ta); ta.select();
       ok = document.execCommand('copy');
       ta.remove();
