@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-SUPERVISOR.JS  v4.8.0 — supervisor dashboard + End of Shift report (Floor & Shift Supervisor)
+VIEWS-SUPERVISOR.JS  v4.9.0 — supervisor dashboard + End of Shift report (Smart Night Shift Date)
 ================================================ */
 /* ================================================
 SUPERVISOR DASHBOARD
@@ -20,7 +20,7 @@ async function fetchSupervisorDashboard(full) {
   const key = K.supdash(date);
   if (full) {
     const st = swrLoad(key);
-    if (st && st.success) {                                    /* instant paint, refresh right after */
+    if (st && st.success) {
       S._stalePaint = true;
       try { renderSupervisorDashboard(st); } finally { S._stalePaint = false; }
       setStatus('updating');
@@ -29,19 +29,17 @@ async function fetchSupervisorDashboard(full) {
     }
   }
   try {
-    /* FAST NON-BLOCKING LOAD: get primary supervisor dashboard first */
     const d = await api({ action: 'supervisorDashboard', date }, key, 0);
     if (!d.success) throw new Error(d.error || 'Failed');
     swrSave(key, d);
 
-    /* Background batch for secondary cards + health */
     primeBatch([
       { key: K.atlow(date), params: { action: 'activetimeLow', date } },
       { key: K.lane(date),  params: { action: 'laneLineCert', date } }
     ].concat(healthItems())).then(() => { absorbHealth(); }).catch(() => {});
 
     const sig = JSON.stringify(d);
-    if (!full && sig === S._sig.sup) { setStatus('live'); return; }     /* nothing changed → no re-render */
+    if (!full && sig === S._sig.sup) { setStatus('live'); return; }
     S._sig.sup = sig;
     renderSupervisorDashboard(d);
     setStatus('live');
@@ -53,7 +51,7 @@ async function fetchSupervisorDashboard(full) {
 }
 
 function renderSupervisorDashboard(d) {
-  S._supData = d;                      /* the End-of-Shift report is built from the latest rendered data */
+  S._supData = d;
   const date = D.datePicker.value;
   const reportScope = buildShiftReport(d).scope;
   const locations = d.locations || {};
@@ -582,7 +580,7 @@ async function openSupervisorQcPanel(locName, date) {
 }
 
 /* ================================================
-END OF SHIFT REPORT  (v4.3.0 / v4.6.0)
+END OF SHIFT REPORT (Smart Night Shift Date Integration)
 ================================================ */
 function shortRoomLabel(name) {
   const s = String(name || '').trim();
@@ -607,10 +605,10 @@ function reportLabels(names) {
 }
 
 function buildShiftReport(d) {
-  const p = (D.datePicker.value || '').split('-');
-  const dateTxt = p.length === 3 ? (Number(p[2]) + '/' + Number(p[1]) + '/' + p[0]) : (D.datePicker.value || '');
+  const reportDate = (d && d.date) ? d.date : D.datePicker.value;
+  const p = reportDate.split('-');
+  const dateTxt = p.length === 3 ? (Number(p[0]) + '/' + Number(p[1]) + '/' + p[2]) : reportDate;
 
-  /* Case 1: Shift Supervisor (whole shift report) */
   if (d && (d.isShiftReport || (!d.locations && d.shift))) {
     const att = d.attendance || {}, t = d.tasks || {};
     const active  = att.totalActive || d.totalUsers || 0;
@@ -636,7 +634,6 @@ function buildShiftReport(d) {
     return { title, scope, text };
   }
 
-  /* Case 2: Floor Supervisor (locations report) */
   const locs = (d && d.locations) || {};
   let active = 0, pending = 0, tasks = 0, lfp = 0, lqa = 0, llfp = 0, llqa = 0, shiftWord = '';
   const names = [];
@@ -727,7 +724,7 @@ async function copyShiftReport() {
   if (!ok) {
     try {
       const ta = document.createElement('textarea');
-      ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+      ta.value = text; ta.setAttribute('readonly', '',); ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
       document.body.appendChild(ta); ta.select();
       ok = document.execCommand('copy');
       ta.remove();
