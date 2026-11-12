@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-SUPERVISOR.JS  v4.7.0 — supervisor dashboard + End of Shift report (Floor & Shift Supervisor)
+VIEWS-SUPERVISOR.JS  v4.8.0 — supervisor dashboard + End of Shift report (Floor & Shift Supervisor)
 ================================================ */
 /* ================================================
 SUPERVISOR DASHBOARD
@@ -29,15 +29,17 @@ async function fetchSupervisorDashboard(full) {
     }
   }
   try {
-    await primeBatch([
-      { key: key,          params: { action:'supervisorDashboard', date } },
-      { key: K.atlow(date), params: { action:'activetimeLow', date } },
-      { key: K.lane(date),  params: { action:'laneLineCert', date } }
-    ].concat(healthItems()));
-    absorbHealth();
-    const d = await api({action:'supervisorDashboard',date}, key, 0);
+    /* FAST NON-BLOCKING LOAD: get primary supervisor dashboard first */
+    const d = await api({ action: 'supervisorDashboard', date }, key, 0);
     if (!d.success) throw new Error(d.error || 'Failed');
     swrSave(key, d);
+
+    /* Background batch for secondary cards + health */
+    primeBatch([
+      { key: K.atlow(date), params: { action: 'activetimeLow', date } },
+      { key: K.lane(date),  params: { action: 'laneLineCert', date } }
+    ].concat(healthItems())).then(() => { absorbHealth(); }).catch(() => {});
+
     const sig = JSON.stringify(d);
     if (!full && sig === S._sig.sup) { setStatus('live'); return; }     /* nothing changed → no re-render */
     S._sig.sup = sig;
@@ -63,10 +65,10 @@ function renderSupervisorDashboard(d) {
       <div class="ss-shift-tag" style="background:var(--blue-bg);border-color:var(--blue-br);color:var(--blue);">
         <i class="fas fa-user-tie"></i> Supervisor Dashboard
       </div>
-      <p class="ss-date-label">${date}</p>
+      <p class="ss-date-label">${esc(date)}</p>
     </div>
     <div class="ss-date-ctrl">
-      <input type="date" value="${date}" class="ctrl-date"
+      <input type="date" value="${esc(date)}" class="ctrl-date"
              onchange="D.datePicker.value=this.value;cDel('supdash_');fetchSupervisorDashboard(true)">
     </div>
   </div>`;
@@ -79,7 +81,7 @@ function renderSupervisorDashboard(d) {
     const pct = att.totalActive > 0 ? Math.round((loc.totalSubmitted / att.totalActive) * 100) : 0;
     const pendCount = loc.totalPending || 0;
     const t = loc.tasks || {};
-    const u = loc.overallUserBreakdown || {LIDAR:{FP:0,QA:0},LaneLine:{FP:0,QA:0}};
+    const u = loc.overallUserBreakdown || { LIDAR: { FP: 0, QA: 0 }, LaneLine: { FP: 0, QA: 0 } };
 
     html += `<div class="loc-section" style="margin-bottom:24px;animation-delay:${locIdx * 60}ms">`;
 
@@ -88,7 +90,7 @@ function renderSupervisorDashboard(d) {
       <div class="loc-icon-wrap"><i class="fas fa-building"></i></div>
       <div class="loc-title-wrap">
         <h2 class="loc-name">${esc(locName)}</h2>
-        <span class="loc-sub">${CONFIG.SHIFT_LABELS[loc.shift] || loc.shift || ''} · ${Object.keys(loc.rooms||{}).length} rooms · ${att.totalActive || 0} active</span>
+        <span class="loc-sub">${esc(CONFIG.SHIFT_LABELS[loc.shift] || loc.shift || '')} · ${Object.keys(loc.rooms || {}).length} rooms · ${att.totalActive || 0} active</span>
       </div>
     </div>`;
 
@@ -99,7 +101,7 @@ function renderSupervisorDashboard(d) {
       <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-users"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">Total Active Users</div>
-        <div class="kpi-val kpi-val-blue">${att.totalActive||0}</div>
+        <div class="kpi-val kpi-val-blue">${att.totalActive || 0}</div>
       </div>
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
@@ -109,14 +111,14 @@ function renderSupervisorDashboard(d) {
       <div class="kpi-icon-wrap kpi-green"><i class="fas fa-circle-check"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">Total Submitted</div>
-        <div class="kpi-val kpi-val-green">${loc.totalSubmitted||0}</div>
-        <div class="kpi-sub">${t.total||0} tasks · ${t.uniqueUsers||0} labelers</div>
+        <div class="kpi-val kpi-val-green">${loc.totalSubmitted || 0}</div>
+        <div class="kpi-sub">${t.total || 0} tasks · ${t.uniqueUsers || 0} labelers</div>
       </div>
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
     html += `
-    <div class="kpi-card kpi-clickable" onclick='openPendingPanel(${JSON.stringify(loc.rooms||{})},${pendCount},${JSON.stringify(loc.pendingByTeam||{})},${JSON.stringify(loc.pendingUsers||[])})'>
+    <div class="kpi-card kpi-clickable" onclick='openPendingPanel(${JSON.stringify(loc.rooms || {})},${pendCount},${JSON.stringify(loc.pendingByTeam || {})},${JSON.stringify(loc.pendingUsers || [])})'>
       <div class="kpi-icon-wrap kpi-red"><i class="fas fa-hourglass-half"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">Pending</div>
@@ -133,7 +135,7 @@ function renderSupervisorDashboard(d) {
         <div class="kpi-icon-wrap kpi-red"><i class="fas fa-user-xmark"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">Absent</div>
-          <div class="kpi-val kpi-val-red">${att.totalAbsent||0}</div>
+          <div class="kpi-val kpi-val-red">${att.totalAbsent || 0}</div>
         </div>
       </div>`;
     }
@@ -144,74 +146,74 @@ function renderSupervisorDashboard(d) {
         <div class="kpi-icon-wrap kpi-gray"><i class="fas fa-user-slash"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">Empty</div>
-          <div class="kpi-val kpi-val-gray">${att.totalEmpty||0}</div>
+          <div class="kpi-val kpi-val-gray">${att.totalEmpty || 0}</div>
         </div>
       </div>`;
     }
 
     if (att.totalTraining > 0) {
-      const trainingHTML = Object.entries(att.trainingByLevel||{}).map(([l,c])=>`<span class="train-badge">${l}: ${c}</span>`).join('');
+      const trainingHTML = Object.entries(att.trainingByLevel || {}).map(([l, c]) => `<span class="train-badge">${esc(l)}: ${c}</span>`).join('');
       html += `
       <div class="kpi-card">
         <div class="kpi-icon-wrap kpi-yellow"><i class="fas fa-graduation-cap"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">In Training</div>
-          <div class="kpi-val kpi-val-yellow">${att.totalTraining||0}</div>
+          <div class="kpi-val kpi-val-yellow">${att.totalTraining || 0}</div>
           <div class="kpi-extra">${trainingHTML}</div>
         </div>
       </div>`;
     }
 
     html += `
-    <div class="kpi-card kpi-clickable" onclick='openPanel("Room Breakdown — Detailed","${esc(locName)}",${JSON.stringify(buildRoomRows(loc.rooms||{}))})'>
+    <div class="kpi-card kpi-clickable" onclick='openPanel("Room Breakdown — Detailed","${esc(locName)}",${JSON.stringify(buildRoomRows(loc.rooms || {}))})'>
       <div class="kpi-icon-wrap kpi-purple"><i class="fas fa-building"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">Room Breakdown</div>
-        <div class="kpi-val kpi-val-purple">${Object.keys(loc.rooms||{}).length} rooms</div>
+        <div class="kpi-val kpi-val-purple">${Object.keys(loc.rooms || {}).length} rooms</div>
         <div class="kpi-sub">Click for details</div>
       </div>
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
     html += `
-    <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("LIDAR First Pass","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown||{})},"LIDAR","FP")'>
+    <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("LIDAR First Pass","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown || {})},"LIDAR","FP")'>
       <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-cube"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">LIDAR First Pass</div>
-        <div class="kpi-val kpi-val-blue">${u.LIDAR?.FP||0}</div>
+        <div class="kpi-val kpi-val-blue">${u.LIDAR?.FP || 0}</div>
         <div class="kpi-sub">labelers</div>
       </div>
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
     html += `
-    <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("LIDAR QA","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown||{})},"LIDAR","QA")'>
+    <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("LIDAR QA","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown || {})},"LIDAR","QA")'>
       <div class="kpi-icon-wrap kpi-green"><i class="fas fa-cube"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">LIDAR QA</div>
-        <div class="kpi-val kpi-val-green">${u.LIDAR?.QA||0}</div>
+        <div class="kpi-val kpi-val-green">${u.LIDAR?.QA || 0}</div>
         <div class="kpi-sub">labelers</div>
       </div>
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
     html += `
-    <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("Lane Line First Pass","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown||{})},"LaneLine","FP")'>
+    <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("Lane Line First Pass","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown || {})},"LaneLine","FP")'>
       <div class="kpi-icon-wrap kpi-purple"><i class="fas fa-road"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">Lane Line First Pass</div>
-        <div class="kpi-val kpi-val-purple">${u.LaneLine?.FP||0}</div>
+        <div class="kpi-val kpi-val-purple">${u.LaneLine?.FP || 0}</div>
         <div class="kpi-sub">labelers</div>
       </div>
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
     html += `
-    <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("Lane Line QA","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown||{})},"LaneLine","QA")'>
+    <div class="kpi-card kpi-clickable" onclick='openUserTypePanel("Lane Line QA","${esc(locName)}",${JSON.stringify(loc.roomUserBreakdown || {})},"LaneLine","QA")'>
       <div class="kpi-icon-wrap kpi-yellow"><i class="fas fa-road"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">Lane Line QA</div>
-        <div class="kpi-val kpi-val-yellow">${u.LaneLine?.QA||0}</div>
+        <div class="kpi-val kpi-val-yellow">${u.LaneLine?.QA || 0}</div>
         <div class="kpi-sub">labelers</div>
       </div>
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
@@ -222,7 +224,7 @@ function renderSupervisorDashboard(d) {
       <div class="kpi-icon-wrap kpi-purple"><i class="fas fa-user-tie"></i></div>
       <div class="kpi-body">
         <div class="kpi-label">QC Breakdown</div>
-        <div class="kpi-val kpi-val-purple">${loc.qcCount||0} QCs</div>
+        <div class="kpi-val kpi-val-purple">${loc.qcCount || 0} QCs</div>
         <div class="kpi-sub">Click for details</div>
       </div>
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
@@ -239,7 +241,6 @@ function renderSupervisorDashboard(d) {
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
-    /* ── NEW v3.9.0: ATOT Below 80% card ── */
     html += `
     <div class="kpi-card kpi-clickable atot-below-card" onclick="openActivetimeLowPanel('${esc(locName)}','below')">
       <div class="kpi-icon-wrap kpi-red"><i class="fas fa-arrow-down"></i></div>
@@ -251,7 +252,6 @@ function renderSupervisorDashboard(d) {
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
-    /* ── NEW v3.9.0: ATOT Above 80% card ── */
     html += `
     <div class="kpi-card kpi-clickable atot-above-card" onclick="openActivetimeLowPanel('${esc(locName)}','above')">
       <div class="kpi-icon-wrap kpi-green"><i class="fas fa-arrow-up"></i></div>
@@ -274,7 +274,6 @@ function renderSupervisorDashboard(d) {
       <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
     </div>`;
 
-    /* ── NEW v4.3.0: End of Shift report (all of this supervisor's rooms combined) ── */
     html += `
     <div class="kpi-card kpi-clickable kpi-report" onclick="openShiftReport()">
       <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-file-lines"></i></div>
@@ -291,7 +290,6 @@ function renderSupervisorDashboard(d) {
 
   html += `</div>`;
   D.supervisorView.innerHTML = html;
-  console.log('✅ Supervisor dashboard rendered successfully');
 
   const locNamesKeys = Object.keys(locations);
   locNamesKeys.forEach((locName, locIdx) => {
@@ -324,24 +322,24 @@ function buildAttendanceRows(att) {
   <div class="br-section">Attendance Overview</div>
   <div class="br-row">
     <span class="br-label"><i class="fas fa-user-check"></i>Active Users</span>
-    <span class="br-pill pill-green">${att.totalActive||0}</span>
+    <span class="br-pill pill-green">${att.totalActive || 0}</span>
   </div>
   <div class="br-row">
     <span class="br-label"><i class="fas fa-user-xmark"></i>Absent (0)</span>
-    <span class="br-pill pill-red">${att.totalAbsent||0}</span>
+    <span class="br-pill pill-red">${att.totalAbsent || 0}</span>
   </div>
   <div class="br-row">
     <span class="br-label"><i class="fas fa-user-slash"></i>Empty (E)</span>
-    <span class="br-pill pill-gray">${att.totalEmpty||0}</span>
+    <span class="br-pill pill-gray">${att.totalEmpty || 0}</span>
   </div>`;
   if (att.totalTraining > 0) {
     html += `
     <div class="br-row">
       <span class="br-label"><i class="fas fa-graduation-cap"></i>In Training</span>
-      <span class="br-pill pill-yellow">${att.totalTraining||0}</span>
+      <span class="br-pill pill-yellow">${att.totalTraining || 0}</span>
     </div>
     <div class="br-training-detail">
-      ${Object.entries(att.trainingByLevel||{}).map(([l,c])=>`<span class="train-badge">${l}: ${c}</span>`).join('')}
+      ${Object.entries(att.trainingByLevel || {}).map(([l, c]) => `<span class="train-badge">${esc(l)}: ${c}</span>`).join('')}
     </div>`;
   }
   return html;
@@ -350,21 +348,21 @@ function buildAttendanceRows(att) {
 function buildTaskRows(t) {
   let html = `
   <div class="br-section">LIDAR</div>
-  <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${t.LIDAR?.FP||0} tasks</span></div>
-  <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${t.LIDAR?.QA||0} tasks</span></div>
+  <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${t.LIDAR?.FP || 0} tasks</span></div>
+  <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${t.LIDAR?.QA || 0} tasks</span></div>
   <div class="br-section" style="margin-top:12px">Lane Line</div>
-  <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${t.LaneLine?.FP||0} tasks</span></div>
-  <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${t.LaneLine?.QA||0} tasks</span></div>`;
-  if (Object.keys(t.other||{}).length) {
+  <div class="br-row"><span class="br-label">First Pass (FP)</span><span class="br-pill pill-blue">${t.LaneLine?.FP || 0} tasks</span></div>
+  <div class="br-row"><span class="br-label">QA</span><span class="br-pill pill-green">${t.LaneLine?.QA || 0} tasks</span></div>`;
+  if (Object.keys(t.other || {}).length) {
     html += `<div class="br-section" style="margin-top:12px">Other</div>` +
-      Object.entries(t.other||{}).map(([k,v])=>`<div class="br-row"><span class="br-label">${esc(k)}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('');
+      Object.entries(t.other || {}).map(([k, v]) => `<div class="br-row"><span class="br-label">${esc(k)}</span><span class="br-pill pill-yellow">${v}</span></div>`).join('');
   }
   return html;
 }
 
 function buildRoomRows(rooms) {
-  return Object.entries(rooms).map(([room,r])=>{
-    const trainingBadges = Object.entries(r.trainingByLevel||{}).map(([l,c])=>`<span class="train-badge-sm">${l}: ${c}</span>`).join('');
+  return Object.entries(rooms).map(([room, r]) => {
+    const trainingBadges = Object.entries(r.trainingByLevel || {}).map(([l, c]) => `<span class="train-badge-sm">${esc(l)}: ${c}</span>`).join('');
     return `
     <div class="br-row room-detail-row">
       <div class="room-detail-main">
@@ -372,14 +370,14 @@ function buildRoomRows(rooms) {
         <span class="br-pill pill-blue">${r.total} total</span>
       </div>
       <div class="room-detail-stats">
-        <span class="br-pill pill-green"><i class="fas fa-user-check"></i>${r.active||0} active</span>
-        <span class="br-pill pill-green"><i class="fas fa-check"></i>${r.submitted||0} done</span>
-        <span class="br-pill pill-red"><i class="fas fa-hourglass-half"></i>${r.pending||0} pending</span>
-        ${r.absent>0?`<span class="br-pill pill-gray"><i class="fas fa-user-xmark"></i>${r.absent} absent</span>`:''}
-        ${r.empty>0?`<span class="br-pill pill-gray"><i class="fas fa-user-slash"></i>${r.empty} empty</span>`:''}
-        ${r.training>0?`<span class="br-pill pill-yellow"><i class="fas fa-graduation-cap"></i>${r.training} training</span>`:''}
+        <span class="br-pill pill-green"><i class="fas fa-user-check"></i>${r.active || 0} active</span>
+        <span class="br-pill pill-green"><i class="fas fa-check"></i>${r.submitted || 0} done</span>
+        <span class="br-pill pill-red"><i class="fas fa-hourglass-half"></i>${r.pending || 0} pending</span>
+        ${r.absent > 0 ? `<span class="br-pill pill-gray"><i class="fas fa-user-xmark"></i>${r.absent} absent</span>` : ''}
+        ${r.empty > 0 ? `<span class="br-pill pill-gray"><i class="fas fa-user-slash"></i>${r.empty} empty</span>` : ''}
+        ${r.training > 0 ? `<span class="br-pill pill-yellow"><i class="fas fa-graduation-cap"></i>${r.training} training</span>` : ''}
       </div>
-      ${trainingBadges?`<div class="room-training-badges">${trainingBadges}</div>`:''}
+      ${trainingBadges ? `<div class="room-training-badges">${trainingBadges}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -496,7 +494,7 @@ async function openSupervisorQcPanel(locName, date) {
   openCenterModal('QC Breakdown', locName, '<div class="qc-modal-spin"><div class="spin-ring"></div></div>');
   const key = K.supdash(date);
   try {
-    const d = await api({action:'supervisorDashboard',date}, key, 0);
+    const d = await api({ action: 'supervisorDashboard', date }, key, 0);
     if (!d.success) throw new Error(d.error || 'Failed');
     const loc = d.locations?.[locName];
     if (!loc) {
@@ -547,7 +545,7 @@ async function openSupervisorQcPanel(locName, date) {
         </div>
         ${Object.keys(q.other || {}).length ? `
         <div class="qc-other">
-          ${Object.entries(q.other).map(([k,v]) => `<span class="qc-other-badge">${esc(k)}: ${v}</span>`).join('')}
+          ${Object.entries(q.other).map(([k, v]) => `<span class="qc-other-badge">${esc(k)}: ${v}</span>`).join('')}
         </div>` : ''}
       </div>`;
     }).join('');
@@ -585,16 +583,10 @@ async function openSupervisorQcPanel(locName, date) {
 
 /* ================================================
 END OF SHIFT REPORT  (v4.3.0 / v4.6.0)
-- Floor Supervisor: one report for ALL his rooms (102 + 108 together · 106 = 104 + 105 · Saint Fatima alone)
-- Shift Supervisor (v4.6.0): one report for the WHOLE shift across the sheet
-Total Production = Total Active Users   (sum)
-Submitted        = tasks submitted      (sum)
-Not Submitted    = Pending              (sum)
-LIDAR / Lane Line FP · QA = task counts (sum)
 ================================================ */
 function shortRoomLabel(name) {
   const s = String(name || '').trim();
-  const m = s.match(/^(?:nc\s*)?(?:unit|room)\s*(\d+)$/i);      /* "NC Unit 104" → "104" */
+  const m = s.match(/^(?:nc\s*)?(?:unit|room)\s*(\d+)$/i);
   return m ? m[1] : s;
 }
 function joinAnd(list) {
@@ -613,7 +605,7 @@ function reportLabels(names) {
   const allNum = labels.length > 0 && labels.every(l => /^\d+$/.test(l));
   return (allNum ? (labels.length > 1 ? 'Rooms ' : 'Room ') : '') + joinAnd(labels);
 }
-/* d = answer of "shiftReport", "supervisorDashboard", or "shiftSupervisor" */
+
 function buildShiftReport(d) {
   const p = (D.datePicker.value || '').split('-');
   const dateTxt = p.length === 3 ? (Number(p[2]) + '/' + Number(p[1]) + '/' + p[0]) : (D.datePicker.value || '');
@@ -661,7 +653,7 @@ function buildShiftReport(d) {
       else if (l.shift === 'All Shifts') shiftWord = 'All Shifts';
     }
   });
-  const scopeNames = (d && (d.scopeRooms || d.reportScope)) || names;      /* server list wins: it includes rooms of the same person */
+  const scopeNames = (d && (d.scopeRooms || d.reportScope)) || names;
   const scope = reportLabels(scopeNames);
   const title = 'Production Overview for ' + scope + (shiftWord ? ' \u2013 ' + shiftWord : '');
   const text = [
@@ -678,6 +670,7 @@ function buildShiftReport(d) {
   ].join('\n');
   return { title, scope, text };
 }
+
 async function openShiftReport() {
   const isSS = (typeof userKind === 'function' && userKind() === 'ss');
   if (isSS) {
@@ -700,14 +693,14 @@ async function openShiftReport() {
 
   if (!S._supData) return;
   const date = fmtDate(D.datePicker.value);
-  openCenterModal('End of Shift Report', 'Collecting the numbers of all your rooms…', null);   /* spinner */
+  openCenterModal('End of Shift Report', 'Collecting the numbers of all your rooms…', null);
   let d = null, note = 'Numbers of all your rooms combined, as shown now';
   try {
     d = await api({ action: 'shiftReport', date }, K.report(date));
     if (!d || d.success === false) throw new Error((d && d.error) || 'Report failed');
   } catch (e) {
     if (e.isAuth) return;
-    d = Object.assign({}, S._supData, { reportScope: null });   /* fallback: only the rooms this dashboard shows (title must match the numbers) */
+    d = Object.assign({}, S._supData, { reportScope: null });
     note = '⚠ Could not load the combined numbers — this report covers only the rooms on this dashboard';
   }
   const r = buildShiftReport(d);
@@ -723,6 +716,7 @@ async function openShiftReport() {
     </div>
   </div>`);
 }
+
 async function copyShiftReport() {
   const text = S._shiftReportText || '';
   const btn = document.getElementById('repCopyBtn');
@@ -730,7 +724,7 @@ async function copyShiftReport() {
   try {
     if (navigator.clipboard && window.isSecureContext !== false) { await navigator.clipboard.writeText(text); ok = true; }
   } catch (e) {}
-  if (!ok) {                                   /* old browsers / blocked clipboard */
+  if (!ok) {
     try {
       const ta = document.createElement('textarea');
       ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
