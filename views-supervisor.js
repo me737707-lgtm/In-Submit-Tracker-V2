@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-SUPERVISOR.JS  v4.9.1 — supervisor dashboard + End of Shift report
+VIEWS-SUPERVISOR.JS  v4.9.2 — supervisor dashboard + End of Shift report (Smart Night Shift Date)
 ================================================ */
 /* ================================================
 SUPERVISOR DASHBOARD
@@ -29,10 +29,13 @@ async function fetchSupervisorDashboard(full) {
     }
   }
   try {
+    /* 1. Fetch primary dashboard immediately */
     const d = await api({ action: 'supervisorDashboard', date }, key, 0);
     if (!d.success) throw new Error(d.error || 'Failed');
     swrSave(key, d);
 
+    /* 2. Register background batch in S._inflight BEFORE renderSupervisorDashboard
+          so card fetches inside render share the single batch request */
     primeBatch([
       { key: K.atlow(date), params: { action: 'activetimeLow', date } },
       { key: K.lane(date),  params: { action: 'laneLineCert', date } }
@@ -67,7 +70,7 @@ function renderSupervisorDashboard(d) {
     </div>
     <div class="ss-date-ctrl">
       <input type="date" value="${esc(date)}" class="ctrl-date"
-             onchange="D.datePicker.value=this.value;cDel('supdash_');fetchSupervisorDashboard(true)">
+             onchange="D.datePicker.value=this.value;cDel('supdash_');cDel('report_');fetchSupervisorDashboard(true)">
     </div>
   </div>`;
 
@@ -604,10 +607,16 @@ function reportLabels(names) {
   return (allNum ? (labels.length > 1 ? 'Rooms ' : 'Room ') : '') + joinAnd(labels);
 }
 
+/* Formats either dd-MM-yyyy (server) or yyyy-MM-dd (picker) into d/M/yyyy */
+function formatReportDate_(raw) {
+  const p = String(raw || '').split('-');
+  if (p.length !== 3) return String(raw || '');
+  if (p[0].length === 4) return Number(p[2]) + '/' + Number(p[1]) + '/' + p[0]; /* yyyy-MM-dd */
+  return Number(p[0]) + '/' + Number(p[1]) + '/' + p[2];                        /* dd-MM-yyyy */
+}
+
 function buildShiftReport(d) {
-  const reportDate = (d && d.date) ? d.date : D.datePicker.value;
-  const p = reportDate.split('-');
-  const dateTxt = p.length === 3 ? (Number(p[0]) + '/' + Number(p[1]) + '/' + p[2]) : reportDate;
+  const dateTxt = formatReportDate_((d && d.date) ? d.date : D.datePicker.value);
 
   if (d && (d.isShiftReport || (!d.locations && d.shift))) {
     const att = d.attendance || {}, t = d.tasks || {};
@@ -670,36 +679,27 @@ function buildShiftReport(d) {
 
 async function openShiftReport() {
   const isSS = (typeof userKind === 'function' && userKind() === 'ss');
-  if (isSS) {
-    if (!S._ssData) return;
-    const r = buildShiftReport(S._ssData);
-    S._shiftReportText = r.text;
-    let now = '';
-    try { now = new Intl.DateTimeFormat('en-GB', { timeZone: CONFIG.TZ, hour: '2-digit', minute: '2-digit' }).format(new Date()); } catch (e) {}
-    const note = 'Numbers of the entire shift across all rooms, as shown now';
-    openCenterModal('End of Shift Report', r.scope + (now ? ' · generated ' + now : ''), `
-    <div class="rep-wrap">
-      <pre id="repText" class="rep-text">${esc(r.text)}</pre>
-      <div class="rep-actions">
-        <span class="rep-note"><i class="fas fa-circle-info"></i> ${esc(note)}</span>
-        <button type="button" id="repCopyBtn" class="rep-copy" onclick="copyShiftReport()"><i class="fas fa-copy"></i> Copy report</button>
-      </div>
-    </div>`);
-    return;
-  }
+  if (isSS && !S._ssData) return;
+  if (!isSS && !S._supData) return;
 
-  if (!S._supData) return;
   const date = fmtDate(D.datePicker.value);
-  openCenterModal('End of Shift Report', 'Collecting the numbers of all your rooms…', null);
-  let d = null, note = 'Numbers of all your rooms combined, as shown now';
+  openCenterModal('End of Shift Report', isSS ? 'Collecting shift report numbers…' : 'Collecting the numbers of all your rooms…', null);
+
+  let d = null;
+  let note = isSS ? 'Numbers of the entire shift across all rooms' : 'Numbers of all your rooms combined, as shown now';
+
   try {
     d = await api({ action: 'shiftReport', date }, K.report(date));
     if (!d || d.success === false) throw new Error((d && d.error) || 'Report failed');
+    if (d.date && d.date !== date) {
+      note = '✓ Night Shift past-midnight auto-adjusted to shift date (' + d.date + ')';
+    }
   } catch (e) {
     if (e.isAuth) return;
-    d = Object.assign({}, S._supData, { reportScope: null });
-    note = '⚠ Could not load the combined numbers — this report covers only the rooms on this dashboard';
+    d = isSS ? S._ssData : Object.assign({}, S._supData, { reportScope: null });
+    note = '⚠ Could not load server report — showing numbers currently on this screen';
   }
+
   const r = buildShiftReport(d);
   S._shiftReportText = r.text;
   let now = '';
