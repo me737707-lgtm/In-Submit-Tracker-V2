@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-MAIN.JS  v4.8.0 — main dashboard (QC / admin) · filters · search
+VIEWS-MAIN.JS  v4.9.2 — main dashboard (QC / admin) · filters · search
 ================================================ */
 /* ================================================
 MAIN DASHBOARD FETCH
@@ -12,27 +12,27 @@ async function fetchMain(showLoader, manual) {
     S.loading = true;
     if (showLoader) {
       const st = swrLoad(key);
-      if (st && st.data && Object.keys(st.data).length) {       /* instant paint, refresh right after */
+      if (st && st.data && Object.keys(st.data).length) {
         S._stalePaint = true;
         try { applyMain(st, true, true); } finally { S._stalePaint = false; }
         setStatus('updating');
       } else renderLoader(D.mainContent);
     }
     
-    /* FAST NON-BLOCKING LOAD: fetch main dashboard data immediately first */
+    /* 1. Fetch main dashboard immediately */
     const json = await api({ action: 'main', date }, key, 0);
     swrSave(key, json);
-    applyMain(json, showLoader, manual);
 
-    /* Background fetch for QC supplemental cards if needed (non-blocking) */
+    /* 2. Register background batch in S._inflight BEFORE applyMain()
+          so refreshQcAtotCard() and fetchLaneLineCert() share the batch! */
     if (isQcUser()) {
       primeBatch([
         { key: K.atlow(date), params: { action: 'activetimeLow', date } },
         { key: K.lane(date),  params: { action: 'laneLineCert', date } }
-      ].concat(healthItems())).then(() => {
-        if (typeof refreshQcAtotCard === 'function') refreshQcAtotCard();
-      }).catch(() => {});
+      ].concat(healthItems())).then(() => { absorbHealth(); }).catch(() => {});
     }
+
+    applyMain(json, showLoader, manual);
   } catch(e) {
     setStatus('error');
     renderError(D.mainContent, e);
@@ -61,7 +61,7 @@ function applyMain(json, showLoader, manual) {
 }
 
 function manualRefresh() {
-  cDel();                       /* wipe every client cache (date changed / manual refresh) */
+  cDel();
   S._sig = {};
   const kind = userKind();
   if (kind === 'ss') fetchShiftSupervisor(true);
@@ -90,7 +90,6 @@ function filterForUser(data) {
   }
   return data;
 }
-
 
 /* ================================================
 FILTERS & SEARCH
@@ -222,7 +221,7 @@ function renderDashboard() {
     dual.appendChild(laneSection);
     D.mainContent.appendChild(dual);
 
-    refreshQcAtotCard();          /* today's numbers, or the selected custom range */
+    refreshQcAtotCard();
 
     fetchLaneLineCert().then(d => {
       const el = document.getElementById('laneCertCountQC');
