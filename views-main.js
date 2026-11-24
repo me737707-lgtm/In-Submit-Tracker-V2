@@ -76,11 +76,11 @@ function filterForUser(data) {
   if (userRoleLower === 'supervisor' || userRoleLower === 'supervisors' || u.role === CONFIG.ROLES.SUPERVISOR) return data;
   if (userRoleLower === 'qc' || u.role === CONFIG.ROLES.QC || u.permission === 'only') {
     const out = {};
+    const mine = qcOwnKeys(u);     /* v4.9.4: username + aliases, tag/case/spaces ignored */
     for (const [shift, locs] of Object.entries(data))
       for (const [loc, teams] of Object.entries(locs))
         for (const [tn, td] of Object.entries(teams)) {
-          const base = tn.replace(/\s*\([A-Z]{1,3}\)\s*$/, '').trim();
-          if (base === u.username || tn === u.username) {
+          if (mine[qcKey(tn)]) {
             out[shift]          = out[shift] || {};
             out[shift][loc]     = out[shift][loc] || {};
             out[shift][loc][tn] = td;

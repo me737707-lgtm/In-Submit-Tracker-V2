@@ -256,6 +256,19 @@ function userKind() {
 }
 function isQcUser() { return userKind() === 'qc'; }
 
+/* v4.9.4 — QC name identity (same rules as the backend qcKey_): the "(M)/(N)/(ON)" tag, case, spaces and
+   punctuation are ignored. A QC owns its username + the aliases sent by the server (Login Users col G). */
+function qcKey(s) {
+  return String(s == null ? '' : s).replace(/\s+/g, ' ')
+    .replace(/\s*\(\s*[A-Za-z]{1,3}\s*\)+\s*$/, '').trim()
+    .toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, '');
+}
+function qcOwnKeys(u) {
+  const out = {};
+  [u && u.username].concat((u && u.aliases) || []).forEach(n => { const k = qcKey(n); if (k) out[k] = true; });
+  return out;
+}
+
 function initDashboard() {
   setStatus('loading');
   D.datePicker.value = cairoToday();
