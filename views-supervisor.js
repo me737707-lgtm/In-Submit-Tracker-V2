@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-SUPERVISOR.JS  v4.9.2 — supervisor dashboard + End of Shift report (Smart Night Shift Date)
+VIEWS-SUPERVISOR.JS  v4.10.0 — supervisor dashboard + End of Shift report (Smart Night Shift Date)
 ================================================ */
 /* ================================================
 SUPERVISOR DASHBOARD
@@ -38,7 +38,8 @@ async function fetchSupervisorDashboard(full) {
           so card fetches inside render share the single batch request */
     primeBatch([
       { key: K.atlow(date), params: { action: 'activetimeLow', date } },
-      { key: K.lane(date),  params: { action: 'laneLineCert', date } }
+      { key: K.lane(date),  params: { action: 'laneLineCert', date } },
+      { key: K.lidar(date), params: { action: 'lidarQaCert', date } }
     ].concat(healthItems())).then(() => { absorbHealth(); }).catch(() => {});
 
     const sig = JSON.stringify(d);
@@ -276,6 +277,17 @@ function renderSupervisorDashboard(d) {
     </div>`;
 
     html += `
+    <div class="kpi-card kpi-clickable lidar-cert-card" onclick="openLidarQaCertPanel('${esc(locName)}')">
+      <div class="kpi-icon-wrap kpi-cyan"><i class="fas fa-cube"></i></div>
+      <div class="kpi-body">
+        <div class="kpi-label">LIDAR QA Not Certified</div>
+        <div class="kpi-val" id="lidarCertCountSup_${locIdx}">—</div>
+        <div class="kpi-sub" id="lidarCertSubSup_${locIdx}">labelers</div>
+      </div>
+      <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
+    </div>`;
+
+    html += `
     <div class="kpi-card kpi-clickable kpi-report" onclick="openShiftReport()">
       <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-file-lines"></i></div>
       <div class="kpi-body">
@@ -315,6 +327,17 @@ function renderSupervisorDashboard(d) {
           : (d.registeredInScope + ' registered · all OK');
       }
     });
+    fetchLidarQaCert(locName).then(d => {
+      const el  = document.getElementById('lidarCertCountSup_' + locIdx);
+      const sub = document.getElementById('lidarCertSubSup_' + locIdx);
+      if (el && d.success) {
+        el.textContent = d.issuesCount;
+        el.className   = 'kpi-val ' + (d.issuesCount > 0 ? 'kpi-val-red' : 'kpi-val-green');
+        if (sub) sub.textContent = d.issuesCount > 0
+          ? ('of ' + d.totalLaneLineUsers + ' · ' + d.registeredInScope + ' reg.')
+          : (d.registeredInScope + ' registered · all OK');
+      } else if (el) { el.textContent = '—'; if (sub) sub.textContent = 'unavailable'; }
+    }).catch(() => {});
   });
 }
 
