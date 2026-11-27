@@ -1,5 +1,5 @@
 /* ================================================
-CORE.JS  v4.8.0 — state · API · session · init · helpers
+CORE.JS  v4.10.0 — state · API · session · init · helpers
 Load order (all with defer):  config.js → core.js → views-*.js → panels.js → atot.js → lanecert.js → export.js
 ================================================ */
 const S = {
@@ -48,6 +48,7 @@ const K = {
   ss:      (s, d) => 'ss_' + s + '_' + d,
   atlow:   d      => 'atlow_' + d,
   lane:    d      => 'lanecert_' + d,
+  lidar:   d      => 'lidarqa_' + d,
   report:  d      => 'report_' + d,
   range:   days   => 'atrange_' + days.join(',')
 };
