@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-MAIN.JS  v4.9.2 — main dashboard (QC / admin) · filters · search
+VIEWS-MAIN.JS  v4.10.0 — main dashboard (QC / admin) · filters · search
 ================================================ */
 /* ================================================
 MAIN DASHBOARD FETCH
@@ -28,7 +28,8 @@ async function fetchMain(showLoader, manual) {
     if (isQcUser()) {
       primeBatch([
         { key: K.atlow(date), params: { action: 'activetimeLow', date } },
-        { key: K.lane(date),  params: { action: 'laneLineCert', date } }
+        { key: K.lane(date),  params: { action: 'laneLineCert', date } },
+        { key: K.lidar(date), params: { action: 'lidarQaCert', date } }
       ].concat(healthItems())).then(() => { absorbHealth(); }).catch(() => {});
     }
 
@@ -217,6 +218,20 @@ function renderDashboard() {
         </button>
       </div>
     </div>
+    <div class="loc-header" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--br-1)">
+      <div class="loc-icon-wrap">
+        <i class="fas fa-cube"></i>
+      </div>
+      <div class="loc-title-wrap">
+        <h2 class="loc-name">LIDAR QA Certification</h2>
+        <span class="loc-sub" id="lidarCertCountQC">Loading...</span>
+      </div>
+      <div class="loc-actions">
+        <button class="tl-bd-btn" onclick="openLidarQaCertPanel()">
+          <i class="fas fa-eye"></i> Breakdown
+        </button>
+      </div>
+    </div>
     `;
     dual.appendChild(laneSection);
     D.mainContent.appendChild(dual);
@@ -237,6 +252,25 @@ function renderDashboard() {
       } else {
         el.textContent = 'Unavailable';
       }
+    });
+
+    fetchLidarQaCert().then(d => {
+      const el = document.getElementById('lidarCertCountQC');
+      if (!el) return;
+      if (d.success) {
+        if (d.issuesCount > 0) {
+          el.innerHTML = '<span style="color:var(--red);font-weight:700;">' + d.issuesCount +
+            '</span> issues · ' + d.registeredInScope + ' reg.';
+        } else {
+          el.innerHTML = '<span style="color:var(--green);font-weight:700;">All certified ✓</span> · ' +
+            d.registeredInScope + ' reg.';
+        }
+      } else {
+        el.textContent = 'Unavailable';
+      }
+    }).catch(() => {
+      const el = document.getElementById('lidarCertCountQC');
+      if (el) el.textContent = 'Unavailable';
     });
   }
 
