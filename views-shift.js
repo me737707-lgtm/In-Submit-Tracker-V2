@@ -1,5 +1,5 @@
 /* ================================================
-VIEWS-SHIFT.JS  v4.8.0 — shift supervisor view (+ End of Shift report & non-blocking load)
+VIEWS-SHIFT.JS  v4.10.0 — shift supervisor view (+ End of Shift report & non-blocking load)
 ================================================ */
 /* ================================================
 SHIFT SUPERVISOR VIEW
@@ -40,7 +40,8 @@ async function fetchShiftSupervisor(full) {
     /* Background batch for secondary cards + health */
     primeBatch([
       { key: K.atlow(date), params: { action: 'activetimeLow', date } },
-      { key: K.lane(date),  params: { action: 'laneLineCert', date } }
+      { key: K.lane(date),  params: { action: 'laneLineCert', date } },
+      { key: K.lidar(date), params: { action: 'lidarQaCert', date } }
     ].concat(healthItems())).then(() => { absorbHealth(); }).catch(() => {});
 
     const sig = JSON.stringify(d);
@@ -301,6 +302,16 @@ function renderSSView(d) {
         <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
       </div>
 
+      <div class="kpi-card kpi-clickable lidar-cert-card" onclick="openLidarQaCertPanel()">
+        <div class="kpi-icon-wrap kpi-cyan"><i class="fas fa-cube"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">LIDAR QA Not Certified</div>
+          <div class="kpi-val" id="lidarCertCountSS">—</div>
+          <div class="kpi-sub" id="lidarCertSubSS">labelers</div>
+        </div>
+        <div class="kpi-arrow"><i class="fas fa-chevron-right"></i></div>
+      </div>
+
       <div class="kpi-card kpi-clickable kpi-report" onclick="openShiftReport()">
         <div class="kpi-icon-wrap kpi-blue"><i class="fas fa-file-lines"></i></div>
         <div class="kpi-body">
@@ -335,6 +346,18 @@ function renderSSView(d) {
         : (d.registeredInScope + ' registered · all OK');
     }
   });
+
+  fetchLidarQaCert().then(d => {
+    const el  = document.getElementById('lidarCertCountSS');
+    const sub = document.getElementById('lidarCertSubSS');
+    if (el && d.success) {
+      el.textContent = d.issuesCount;
+      el.className   = 'kpi-val ' + (d.issuesCount > 0 ? 'kpi-val-red' : 'kpi-val-green');
+      if (sub) sub.textContent = d.issuesCount > 0
+        ? ('of ' + d.totalLaneLineUsers + ' · ' + d.registeredInScope + ' reg.')
+        : (d.registeredInScope + ' registered · all OK');
+    } else if (el) { el.textContent = '—'; if (sub) sub.textContent = 'unavailable'; }
+  }).catch(() => {});
 }
 
 function ringHTML(pct) {
